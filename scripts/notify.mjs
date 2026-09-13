@@ -38,7 +38,7 @@ export function repairDecision(runs, now = Date.now()) {
 
 export async function requestRepair(site, request, now = Date.now()) {
   if (site.status === "healthy") return "not_needed";
-  if (site.site !== "fr") return "local_collector_required";
+  if (site.site !== "fr") return "local_recovery_scheduled";
   if (!request) return "repair_unavailable";
   try {
     const result = await request(`actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&per_page=100`);
@@ -70,6 +70,7 @@ function incidentBody(site, repair, checkedAt) {
   return `${marker(site.site)}\n<!-- state:${signature} -->\n\n@${OWNER} Le contrôle de ${site.origin} demande une vérification.\n\n`
     + `État : ${site.status}. Codes : ${site.codes.join(", ")}.\n\nContrôle : ${checkedAt}.\n\n`
     + `Parcours actuels : ${current}.\n\nRétablissement : ${repair}.\n\n`
+    + (repair === "local_recovery_scheduled" ? "La reprise locale est programmée toutes les quatre heures, si l’ordinateur est disponible et Codex ouvert. Elle ne peut pas corriger seule un accès fournisseur révoqué ou un échec persistant des validations.\n\n" : "")
     + "Les collectes locales restent la source de mise à jour des variantes. Aucun prix ni horodatage n’a été modifié par ce contrôleur. "
     + "L’incident sera fermé après un contrôle complet réussi. Les mises à jour identiques ne produisent pas de commentaire supplémentaire.\n";
 }

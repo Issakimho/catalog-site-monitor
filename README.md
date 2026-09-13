@@ -58,7 +58,8 @@ records are uploaded.
 ## Collection and bounded recovery
 
 The existing collection authority for each site is unchanged. Local Codex
-collection/enrichment uses the existing subscription and schedule. This monitor
+collection/enrichment uses the existing subscription. Variant recovery schedules
+are described below; enrichment schedules are unchanged. This monitor
 does not call an AI API, wake a sleeping computer, start a second collector or
 change merchant freshness timestamps.
 
@@ -70,9 +71,34 @@ The public bridge also allows no more than two dispatches per six hours, does
 not duplicate an active dispatch and gives deployment time to finish. Failures
 of the bridge open an incident here without publishing private API details.
 
-The other four sites have local authoritative collectors. Their incidents need
-the existing local collection to run. This repository does not provide instant
-cloud recovery for those sites when the local machine is unavailable.
+The other four sites use `scripts/local-recovery.mjs` from their existing,
+exact-project Codex tasks. Each task checks every four hours, staggered by site.
+It exits without installing or collecting while the public catalog is healthy
+and less than twenty hours old. A verified bot-created incident also causes a
+browser recheck, including failures that do not affect the snapshot itself.
+
+Recovery creates a clean, isolated clone of that site's main branch. Failed
+candidates and user checkouts remain untouched. The worker reads the existing
+supplier credential file in place through the site's approved loader; credentials
+reach only supplier subprocesses. It never calls an AI API. Validation includes
+the site's full publication gate, current and twelve-hour browser journeys,
+an exact three-file publication allowlist and a concurrent-commit check.
+
+Two collection attempts per rolling twenty-four hours and a two-hour cooldown
+bound failures. A deployment awaiting confirmation is rechecked before any new
+collection. A rejected or superseded push clears that pending reference without
+discarding the candidate or retry budget. Success requires GitHub CI, a successful Vercel status for the exact
+commit, byte-identical public catalog files and healthy browser journeys.
+The public monitor then closes the incident after its own checks. Code defects,
+revoked provider access and an unavailable Mac can still require intervention.
+
+Private machine configuration lives outside this repository, in
+`$HOME/.codex/catalog-autonomy/sites.json`. It specifies each exact project root,
+private repository, credential-file path, affiliate identity and build command.
+No private configuration, failed candidate or supplier log is uploaded here.
+Failed attempts are retained locally for diagnosis; they are not automatically
+deleted. This is local polling recovery, not an instant cloud-to-Mac webhook.
+The Mac and Codex app must remain available; the public monitor cannot wake them.
 
 ### French bridge and credential renewal
 

@@ -79,7 +79,7 @@ test("private recovery is optional, bounded and targets only the fixed main-bran
   assert.equal(repairDecision([run(1), run(2)], NOW), "repair_limit_reached");
   assert.equal(repairDecision([run(7)], NOW), "dispatch");
   assert.equal(await requestRepair(bad(sites[0]), undefined, NOW), "repair_unavailable");
-  assert.equal(await requestRepair(bad(sites[2]), () => assert.fail("must not dispatch variant"), NOW), "local_collector_required");
+  assert.equal(await requestRepair(bad(sites[2]), () => assert.fail("must not dispatch variant"), NOW), "local_recovery_scheduled");
   const calls = [];
   assert.equal(await requestRepair(bad(sites[0]), async (...args) => { calls.push(args); return { workflow_runs: [] }; }, NOW), "repair_requested");
   assert.deepEqual(calls[1], ["actions/workflows/catalog-watchdog.yml/dispatches", "POST", { ref: "main" }]);
