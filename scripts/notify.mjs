@@ -16,7 +16,7 @@ export function githubClient(repo, token, request = fetch) {
     const response = await request(`https://api.github.com/repos/${repo}/${path}`, {
       method, redirect: "error", signal: AbortSignal.timeout(20_000),
       headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json" },
+        "X-GitHub-Api-Version": "2026-03-10", "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     // Never include private repository paths, response bodies or tokens in public errors.
