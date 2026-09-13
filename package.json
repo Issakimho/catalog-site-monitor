@@ -1,0 +1,13 @@
+{
+  "name": "catalog-site-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "notify": "node scripts/notify.mjs"
+  },
+  "dependencies": { "playwright-core": "1.63.0" }
+}

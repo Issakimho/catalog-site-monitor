@@ -1,10 +1,128 @@
-# Public catalog monitor
+# Public catalog checks
 
-Shared health checks for pcarchitecte.com, architectlaptops.com,
-architektenrechner.com, pcarquitectos.com and archiscelta.com.
+This repository tests the public recommendation journeys on pcarchitecte.com,
+architectlaptops.com, architektenrechner.com, pcarquitectos.com and archiscelta.com.
+It contains original generic monitoring code and public URL configuration. Site
+source code, product snapshots, supplier credentials and local Codex settings stay
+outside this repository.
 
-This repository contains only generic monitoring code and public URL configuration.
-It does not contain site source code, merchant credentials, product snapshots or
-local Codex configuration. Catalog collection remains in its existing environment.
+## What runs
 
-Setup is in progress. No existing monitor is disabled until its replacement is verified.
+One standard Ubuntu job runs every two hours, at minute 43, and after changes to
+the monitor. A manual run is also available. GitHub schedules are best effort and
+can be delayed. The job checks:
+
+- The public snapshot and manifest, including their byte count, checksum, version
+  and publication dates. Reads are bounded and retried.
+- Catalog age and the number of records seen within the applications' current
+  48-hour listing window. These counts are diagnostics, not a copied eligibility
+  engine or permission to cache merchant data for 48 hours.
+- Three real browser journeys, now and twelve hours ahead with the browser clock
+  changed. Each journey must show at least one recommendation and a visible,
+  enabled purchase button on every recommendation. The future check assumes no
+  new collection; it gives an early warning, not a forecast of scheduled updates.
+
+The browser never clicks affiliate links. Third-party requests, analytics,
+images, fonts, media and service workers are blocked. Browser processes receive
+only PATH and HOME, not GitHub or repair credentials.
+
+The age threshold is 16 hours for the twice-daily French collection and 26 hours
+for the daily local variant collections. Test budgets are 1,500 for drawing,
+1,800 for BIM and 2,200 for rendering, in each site's displayed currency.
+These are sample journeys, not exhaustive questionnaire coverage.
+
+## Incidents and email
+
+A failed check on a locally collected variant creates one GitHub issue, assigned
+to the repository owner. Unchanged incidents produce no additional comments. A
+change in the failure category adds a comment. A healthy snapshot, current
+journey and twelve-hour journey close the incident automatically.
+
+Enable email for assignments and mentions in
+[GitHub notification settings](https://github.com/settings/notifications), and
+enable Actions notifications for failed workflow runs. The latter covers a
+broken monitor, such as a missing browser or a rejected GitHub API request. This
+repository cannot change or verify the owner's email-delivery preferences.
+
+A successful workflow means the monitor completed, not that every site is
+healthy. Read the Actions summary and open incidents for site health.
+
+Only scalar test results are published. The Actions log includes dates and
+counts; `status/latest.json` records one real check per UTC day with each
+journey's outcome. Its commit history provides a daily regression record and
+keeps the repository active. GitHub can disable public schedules after
+[60 days without repository activity](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows).
+Daily records do not trigger another monitoring run. No artifacts or raw product
+records are uploaded.
+
+## Collection and bounded recovery
+
+The existing collection authority for each site is unchanged. Local Codex
+collection/enrichment uses the existing subscription and schedule. This monitor
+does not call an AI API, wake a sleeping computer, start a second collector or
+change merchant freshness timestamps.
+
+For the French site, an optional limited credential can request the private
+repository's existing controller using `workflow_dispatch`. The private
+controller independently re-checks the live site before deciding whether to
+collect. Its existing guards and two-retries-per-six-hours limit remain active.
+The public bridge also allows no more than two dispatches per six hours, does
+not duplicate an active dispatch and gives deployment time to finish. Failures
+of the bridge open an incident here without publishing private API details.
+
+The other four sites have local authoritative collectors. Their incidents need
+the existing local collection to run. This repository does not provide instant
+cloud recovery for those sites when the local machine is unavailable.
+
+### Finish the optional French bridge
+
+The private French two-hour schedule is deliberately retained until this bridge
+is verified. No private-minute saving from removing it has been claimed yet.
+
+1. Create a GitHub fine-grained personal access token, selecting only the French
+   site's private repository. Grant repository **Actions: read and write**;
+   Metadata read is implicit. Do not grant Contents or other write permissions.
+2. Add the value directly as `PCARCHITECTE_ACTIONS_TOKEN` in this repository's
+   [Actions secrets](https://github.com/Issakimho/catalog-site-monitor/settings/secrets/actions).
+   Never paste the token in an issue, commit, chat or workflow log.
+3. The destination is supplied separately in `PCARCHITECTE_REPAIR_REPOSITORY`.
+   The private workflow must declare `workflow_dispatch` and restrict execution
+   to its main branch. The bridge always requests `catalog-watchdog.yml` on
+   `main`; it accepts no site-supplied workflow name, branch or payload.
+4. Verify token access and one manual private-controller dispatch. The normal
+   monitor does not trigger repairs for a healthy site, so a healthy check alone
+   does not prove the dispatch permission works.
+5. Only after that verification, remove the French private two-hour schedule.
+   Keep private post-publication checks, the collector, local Codex enrichment,
+   recovery limits and email settings. Update its schedule contract test too.
+
+Use a fine-grained token or a GitHub App, never the owner's general-purpose CLI
+token. Set a suitable expiry and replace it before expiry. A rejected token on
+a later incident is reported as `repair_unavailable`. There is no guarantee of
+automatic recovery from revoked credentials or a persistent code regression.
+
+## Cost and limits
+
+[GitHub's standard runners are free for public repositories](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+These public checks consume no private-repository runner minutes and no AI API
+tokens. Larger runners are not used. Existing private collections, deployment
+checks, repairs and unrelated CI still consume their usual quota.
+
+The monitor, schedule and issue alerts share GitHub as a dependency. A GitHub
+outage or disabled Actions can interrupt all three. This is not an independent
+dead-man monitor or a guarantee that a catalog can never become empty. The
+computer must remain available for local collectors to run.
+
+## Run locally without writes
+
+Node 22+ and Google Chrome are required.
+
+```sh
+npm ci --ignore-scripts
+npm test
+npm run check
+```
+
+`check` only reads public sites and writes `reports/latest.json` locally.
+Do not run `notify` locally: it requires the trusted main-branch GitHub context
+and write credentials. No privileged workflow runs on pull requests or forks.

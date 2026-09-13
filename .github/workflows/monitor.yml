@@ -1,0 +1,52 @@
+name: Public catalog checks
+
+on:
+  schedule:
+    - cron: "43 */2 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/**"
+      - "config/**"
+      - "test/**"
+      - "package*.json"
+      - ".nvmrc"
+      - ".github/workflows/monitor.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-catalog-checks
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    if: github.repository == 'Issakimho/catalog-site-monitor' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install locked dependency without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Test monitor policies
+        run: npm test
+      - name: Check public snapshots and browser journeys
+        run: npm run check
+      - name: Reconcile incidents and record daily checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PCARCHITECTE_ACTIONS_TOKEN: ${{ secrets.PCARCHITECTE_ACTIONS_TOKEN }}
+          PCARCHITECTE_REPAIR_REPOSITORY: ${{ secrets.PCARCHITECTE_REPAIR_REPOSITORY }}
+        run: npm run notify
