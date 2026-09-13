@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { sites } from "../config/sites.mjs";
 import { inspectSnapshot, fetchBytes, browserEnvironment, checkSite } from "../scripts/check.mjs";
-import { repairDecision, requestRepair, reconcileSite, publishDailySummary, validateReport, githubClient } from "../scripts/notify.mjs";
+import { repairDecision, requestRepair, repairAccessAvailable, reconcileSite, publishDailySummary, validateReport, githubClient } from "../scripts/notify.mjs";
 
 const NOW = Date.parse("2026-09-13T12:00:00.000Z");
 const date = (hours = 0) => new Date(NOW - hours * 3_600_000).toISOString();
@@ -78,7 +78,7 @@ test("private recovery is optional, bounded and targets only the fixed main-bran
   assert.equal(repairDecision([run(0.1)], NOW), "deployment_grace_period");
   assert.equal(repairDecision([run(1), run(2)], NOW), "repair_limit_reached");
   assert.equal(repairDecision([run(7)], NOW), "dispatch");
-  assert.equal(await requestRepair(bad(sites[0]), undefined, NOW), "private_monitor_retained");
+  assert.equal(await requestRepair(bad(sites[0]), undefined, NOW), "repair_unavailable");
   assert.equal(await requestRepair(bad(sites[2]), () => assert.fail("must not dispatch variant"), NOW), "local_collector_required");
   const calls = [];
   assert.equal(await requestRepair(bad(sites[0]), async (...args) => { calls.push(args); return { workflow_runs: [] }; }, NOW), "repair_requested");
@@ -103,11 +103,22 @@ test("incidents are deduplicated, update only on meaningful change and close aft
   assert.deepEqual(calls[0], ["issues/7", "PATCH", { state: "closed", state_reason: "completed" }]);
 });
 
-test("foreign issues are not modified and FR fallback does not duplicate private alerts", async () => {
+test("foreign issues are not modified and missing FR repair access is actionable", async () => {
   const request = async (_path, method) => { assert.equal(method, "POST"); return { number: 8 }; };
   const foreign = { number: 4, title: `[Catalogue] ${sites[2].origin.slice(8)}`, body: "<!-- catalog-site-monitor-v1:de -->", user: { login: "someone-else" } };
   assert.equal((await reconcileSite(bad(), date(), [foreign], request)).action, "opened");
-  assert.equal((await reconcileSite(bad(sites[0]), date(), [], () => assert.fail("private monitor still owns FR incident"))).action, "awaiting_private_monitor");
+  assert.equal((await reconcileSite(bad(sites[0]), date(), [], request)).action, "opened");
+});
+
+test("repair access checks detect missing, revoked or disabled access without dispatch", async () => {
+  assert.equal(await repairAccessAvailable(), false);
+  assert.equal(await repairAccessAvailable(async () => { throw new Error("github_http_401"); }), false);
+  assert.equal(await repairAccessAvailable(async () => ({ state: "disabled_manually" })), false);
+  assert.equal(await repairAccessAvailable(async (path, method) => {
+    assert.equal(path, "actions/workflows/catalog-watchdog.yml");
+    assert.equal(method, undefined);
+    return { state: "active", path: ".github/workflows/catalog-watchdog.yml" };
+  }), true);
 });
 
 test("report validation rejects missing sites, foreign origins and arbitrary prose", () => {

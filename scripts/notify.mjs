@@ -39,7 +39,7 @@ export function repairDecision(runs, now = Date.now()) {
 export async function requestRepair(site, request, now = Date.now()) {
   if (site.status === "healthy") return "not_needed";
   if (site.site !== "fr") return "local_collector_required";
-  if (!request) return "private_monitor_retained";
+  if (!request) return "repair_unavailable";
   try {
     const result = await request(`actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&per_page=100`);
     const action = repairDecision(result.workflow_runs, now);
@@ -48,6 +48,14 @@ export async function requestRepair(site, request, now = Date.now()) {
     await request(`actions/workflows/${WORKFLOW}/dispatches`, "POST", { ref: "main" });
     return "repair_requested";
   } catch { return "repair_unavailable"; }
+}
+
+export async function repairAccessAvailable(request) {
+  if (!request) return false;
+  try {
+    const workflow = await request(`actions/workflows/${WORKFLOW}`);
+    return workflow.state === "active" && workflow.path === `.github/workflows/${WORKFLOW}`;
+  } catch { return false; }
 }
 
 export function notificationSignature(site, repair) {
@@ -75,7 +83,7 @@ export async function reconcileSite(site, checkedAt, openIssues, request, repair
     return { site: site.site, action: incident ? "closed" : "healthy", repair };
   }
   // Give the independently guarded private repair time to finish before opening an incident.
-  if (!incident && ["repair_requested", "repair_running", "deployment_grace_period", "private_monitor_retained"].includes(repair)) {
+  if (!incident && ["repair_requested", "repair_running", "deployment_grace_period"].includes(repair)) {
     return { site: site.site, action: "awaiting_private_monitor", repair };
   }
   const body = incidentBody(site, repair, checkedAt);
@@ -142,6 +150,15 @@ async function main() {
   if (process.env.PCARCHITECTE_ACTIONS_TOKEN && process.env.PCARCHITECTE_REPAIR_REPOSITORY) {
     repairRequest = githubClient(process.env.PCARCHITECTE_REPAIR_REPOSITORY, process.env.PCARCHITECTE_ACTIONS_TOKEN);
   }
+  // Detect an expired/revoked credential or disabled private controller even
+  // while recommendations are healthy. No workflow is dispatched by this read.
+  const bridgeAvailable = await repairAccessAvailable(repairRequest);
+  if (!bridgeAvailable) {
+    repairRequest = undefined;
+    const french = report.sites.find((site) => site.site === "fr");
+    if (french.status === "healthy") french.status = "warning";
+    french.codes.push("repair_bridge_unavailable");
+  }
   const issues = [];
   for (let page = 1; page <= 10; page++) {
     const batch = await request(`issues?state=open&creator=github-actions%5Bbot%5D&per_page=100&page=${page}`);
@@ -152,10 +169,10 @@ async function main() {
   const actions = [];
   for (const site of report.sites) actions.push(await reconcileSite(site, report.checkedAt, issues, request, repairRequest));
   const daily = await publishDailySummary(report, request);
-  console.log(JSON.stringify({ actions, daily, repairBridgeConfigured: Boolean(repairRequest) }, null, 2));
+  console.log(JSON.stringify({ actions, daily, repairBridgeAvailable: bridgeAvailable }, null, 2));
   if (process.env.GITHUB_STEP_SUMMARY) {
     const rows = report.sites.map((site) => `| ${site.origin} | ${site.status} | ${site.codes.join(", ") || "ok"} |`).join("\n");
-    await appendFile(process.env.GITHUB_STEP_SUMMARY, `## Public catalog checks\n\n| Site | Status | Diagnostics |\n| --- | --- | --- |\n${rows}\n\nPrivate repair bridge configured: ${Boolean(repairRequest)}.\n`);
+    await appendFile(process.env.GITHUB_STEP_SUMMARY, `## Public catalog checks\n\n| Site | Status | Diagnostics |\n| --- | --- | --- |\n${rows}\n\nPrivate repair bridge available: ${bridgeAvailable}.\n`);
   }
 }
 
