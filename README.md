@@ -62,7 +62,7 @@ collection/enrichment uses the existing subscription and schedule. This monitor
 does not call an AI API, wake a sleeping computer, start a second collector or
 change merchant freshness timestamps.
 
-For the French site, an optional limited credential can request the private
+For the French site, a limited credential can request the private
 repository's existing controller using `workflow_dispatch`. The private
 controller independently re-checks the live site before deciding whether to
 collect. Its existing guards and two-retries-per-six-hours limit remain active.
@@ -74,10 +74,13 @@ The other four sites have local authoritative collectors. Their incidents need
 the existing local collection to run. This repository does not provide instant
 cloud recovery for those sites when the local machine is unavailable.
 
-### Finish the optional French bridge
+### French bridge and credential renewal
 
-The private French two-hour schedule is deliberately retained until this bridge
-is verified. No private-minute saving from removing it has been claimed yet.
+The bridge was verified on 13 September 2026 by dispatching the guarded private
+controller from this repository and waiting for its successful completion. The
+redundant private two-hour schedule has been removed; private collection,
+post-publication checks and local Codex enrichment are unchanged. Renewal uses
+the same scope:
 
 1. Create a GitHub fine-grained personal access token, selecting only the French
    site's private repository. Grant repository **Actions: read and write**;
@@ -89,16 +92,18 @@ is verified. No private-minute saving from removing it has been claimed yet.
    The private workflow must declare `workflow_dispatch` and restrict execution
    to its main branch. The bridge always requests `catalog-watchdog.yml` on
    `main`; it accepts no site-supplied workflow name, branch or payload.
-4. Verify token access and one manual private-controller dispatch. The normal
-   monitor does not trigger repairs for a healthy site, so a healthy check alone
-   does not prove the dispatch permission works.
-5. Only after that verification, remove the French private two-hour schedule.
-   Keep private post-publication checks, the collector, local Codex enrichment,
-   recovery limits and email settings. Update its schedule contract test too.
+4. Run **Public catalog checks** manually with `verify_repair_bridge` enabled.
+   This sends one fixed main-branch dispatch and waits for that exact private
+   run to succeed. A healthy ordinary check alone does not prove dispatch
+   permission. The smoke test does not force collection on a healthy site.
+5. Keep private post-publication checks, the collector, local Codex enrichment,
+   recovery limits and email settings. Never add a second collector for a site.
 
 Use a fine-grained token or a GitHub App, never the owner's general-purpose CLI
-token. Set a suitable expiry and replace it before expiry. A rejected token on
-a later incident is reported as `repair_unavailable`. There is no guarantee of
+token. Set a suitable expiry and replace it before expiry. Every monitoring run
+also checks read access to the enabled private controller. Missing, revoked or
+expired access produces a `repair_bridge_unavailable` incident even when the
+public recommendations remain healthy. There is no guarantee of
 automatic recovery from revoked credentials or a persistent code regression.
 
 ## Cost and limits
