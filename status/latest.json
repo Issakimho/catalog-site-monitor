@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-13T20:42:54.244Z",
+  "checkedAt": "2026-09-14T00:28:39.134Z",
   "sites": [
     {
       "site": "fr",
@@ -101,122 +101,106 @@
     },
     {
       "site": "de",
-      "status": "critical",
-      "codes": [
-        "too_few_fresh_products",
-        "snapshot_overdue",
-        "freshness_risk_12h",
-        "current_quiz_failed",
-        "quiz_risk_12h"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
         }
       ]
     },
     {
       "site": "es",
-      "status": "critical",
-      "codes": [
-        "too_few_fresh_products",
-        "snapshot_overdue",
-        "freshness_risk_12h",
-        "current_quiz_failed",
-        "quiz_risk_12h"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         }
       ]
     },
     {
       "site": "it",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue",
-        "freshness_risk_12h",
-        "quiz_risk_12h"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
@@ -242,23 +226,23 @@
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
         }
       ]
     }
