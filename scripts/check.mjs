@@ -11,6 +11,13 @@ export function browserEnvironment(env = process.env) {
   return { PATH: env.PATH ?? "", HOME: env.HOME ?? "" };
 }
 
+// Use Playwright's bundled ARM64 browser on the Raspberry.
+// Keep the existing Chrome selection on the Mac and GitHub's x64 runners.
+export function browserLaunchOptions(platform = process.platform, arch = process.arch, env = process.env) {
+  return { channel: platform === "linux" && arch === "arm64" ? "chromium" : "chrome",
+    headless: true, env: browserEnvironment(env) };
+}
+
 export async function fetchBytes(url, request = fetch) {
   let lastCode = "network_error";
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -131,7 +138,7 @@ export async function checkSite(site, browser, now = Date.now(), request = fetch
 async function main() {
   const now = Date.now();
   const { chromium } = await import("playwright-core");
-  const browser = await chromium.launch({ channel: "chrome", headless: true, env: browserEnvironment() });
+  const browser = await chromium.launch(browserLaunchOptions());
   const report = { schemaVersion: 1, checkedAt: new Date(now).toISOString(), sites: [] };
   try {
     // Two sites at a time avoids starting thirty pages on a small standard runner.

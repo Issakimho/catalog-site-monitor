@@ -146,7 +146,20 @@ computer must remain available for local collectors to run.
 
 ## Run locally without writes
 
-Node 22+ and Google Chrome are required.
+Node 22+ and Google Chrome are required on macOS and Linux x64. On Linux
+ARM64 (including Raspberry Pi), the checker uses Playwright's bundled Chromium:
+
+```sh
+npm ci --ignore-scripts
+node node_modules/playwright-core/cli.js install chromium
+# Requires administrator access to install OS libraries:
+node node_modules/playwright-core/cli.js install-deps chromium
+```
+
+Installing the browser does not move or enable any recurring collector. A host
+migration must separately validate project paths, credentials, scheduler identity,
+publication and live checks before disabling the previous collector. Scheduled
+commands must explicitly include the Node installation directory in their PATH.
 
 ```sh
 npm ci --ignore-scripts

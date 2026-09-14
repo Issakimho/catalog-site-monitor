@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 import { sites } from "../config/sites.mjs";
-import { fetchBytes, inspectSnapshot, checkSite, browserEnvironment } from "./check.mjs";
+import { fetchBytes, inspectSnapshot, checkSite, browserEnvironment, browserLaunchOptions } from "./check.mjs";
 
 const HOUR = 3_600_000;
 const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -45,7 +45,7 @@ export function assertRepository(cwd, repository) {
 
 async function browserHealth(site) {
   const { chromium } = await import("playwright-core");
-  const browser = await chromium.launch({ channel: "chrome", headless: true, env: browserEnvironment() });
+  const browser = await chromium.launch(browserLaunchOptions());
   try { return await checkSite(site, browser); } finally { await browser.close(); }
 }
 
