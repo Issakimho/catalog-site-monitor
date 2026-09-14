@@ -104,8 +104,14 @@ Only reproducible dependency folders in old attempts are cleaned; recent and
 pending attempts remain intact. This is local polling recovery, not an instant
 cloud-to-computer webhook. The Raspberry must remain powered and online. Its
 timers survive logout and reboot; the public monitor cannot wake a powered-off
-host. The French collector remains on GitHub, and its separate Codex enrichment
-task remains on the Mac until its Git-permission migration is validated.
+host. The French collector remains on GitHub. Its separate Codex enrichment
+was migrated to the Raspberry on 14 September 2026 after a successful pilot:
+`catalog-enrichment-fr.timer` runs daily at midnight Africa/Niamey and the Mac
+task is paused. Codex reviews only product data in a read-only sandbox, using
+the ChatGPT subscription. A fixed private controller owns Git, the six-file
+allowlist, local tests, exact-SHA trusted workflow validation and publication.
+Success requires a Vercel deployment for that SHA, byte-identical public catalog
+files and healthy browser journeys. An empty review queue makes no Codex call.
 
 ### French bridge and credential renewal
 
