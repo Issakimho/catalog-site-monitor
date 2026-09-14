@@ -71,8 +71,11 @@ The public bridge also allows no more than two dispatches per six hours, does
 not duplicate an active dispatch and gives deployment time to finish. Failures
 of the bridge open an incident here without publishing private API details.
 
-The other four sites use `scripts/local-recovery.mjs` from their existing,
-exact-project Codex tasks. Each task checks every four hours, staggered by site.
+The other four sites use `scripts/local-recovery.mjs` from exact-project systemd
+user timers on an always-on Raspberry Pi. They were migrated on 14 September
+2026 after successful collection, publication and live verification for each
+market; their previous Mac Codex collectors are paused. Each timer checks every
+four hours, with a small randomized delay and a shared serialization lock.
 It exits without installing or collecting while the public catalog is healthy
 and less than twenty hours old. A verified bot-created incident also causes a
 browser recheck, including failures that do not affect the snapshot itself.
@@ -90,15 +93,19 @@ collection. A rejected or superseded push clears that pending reference without
 discarding the candidate or retry budget. Success requires GitHub CI, a successful Vercel status for the exact
 commit, byte-identical public catalog files and healthy browser journeys.
 The public monitor then closes the incident after its own checks. Code defects,
-revoked provider access and an unavailable Mac can still require intervention.
+revoked provider access and an unavailable Raspberry can still require intervention.
 
 Private machine configuration lives outside this repository, in
 `$HOME/.codex/catalog-autonomy/sites.json`. It specifies each exact project root,
 private repository, credential-file path, affiliate identity and build command.
 No private configuration, failed candidate or supplier log is uploaded here.
-Failed attempts are retained locally for diagnosis; they are not automatically
-deleted. This is local polling recovery, not an instant cloud-to-Mac webhook.
-The Mac and Codex app must remain available; the public monitor cannot wake them.
+Candidate source files, Git history and private logs are retained for diagnosis.
+Only reproducible dependency folders in old attempts are cleaned; recent and
+pending attempts remain intact. This is local polling recovery, not an instant
+cloud-to-computer webhook. The Raspberry must remain powered and online. Its
+timers survive logout and reboot; the public monitor cannot wake a powered-off
+host. The French collector remains on GitHub, and its separate Codex enrichment
+task remains on the Mac until its Git-permission migration is validated.
 
 ### French bridge and credential renewal
 
