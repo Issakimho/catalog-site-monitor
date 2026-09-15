@@ -70,7 +70,7 @@ function incidentBody(site, repair, checkedAt) {
   return `${marker(site.site)}\n<!-- state:${signature} -->\n\n@${OWNER} Le contrôle de ${site.origin} demande une vérification.\n\n`
     + `État : ${site.status}. Codes : ${site.codes.join(", ")}.\n\nContrôle : ${checkedAt}.\n\n`
     + `Parcours actuels : ${current}.\n\nRétablissement : ${repair}.\n\n`
-    + (repair === "local_recovery_scheduled" ? "La reprise locale est programmée toutes les quatre heures, si l’ordinateur est disponible et Codex ouvert. Elle ne peut pas corriger seule un accès fournisseur révoqué ou un échec persistant des validations.\n\n" : "")
+    + (repair === "local_recovery_scheduled" ? "Le collecteur existant fonctionne sur le Raspberry, sans dépendre du Mac ni de l’application Codex ouverte. Il vérifie le catalogue toutes les quatre heures et peut être sollicité par le contrôle horaire après confirmation d’un incident. Ses limites de tentatives et validations restent applicables. Un accès fournisseur révoqué ou un échec persistant peut nécessiter une intervention.\n\n" : "")
     + "Les collectes locales restent la source de mise à jour des variantes. Aucun prix ni horodatage n’a été modifié par ce contrôleur. "
     + "L’incident sera fermé après un contrôle complet réussi. Les mises à jour identiques ne produisent pas de commentaire supplémentaire.\n";
 }

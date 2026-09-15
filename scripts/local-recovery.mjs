@@ -132,7 +132,11 @@ export async function recordVerifiedRecovery(id, sha, work) {
   return proof;
 }
 
-export async function recover(id, { apply = false, force = false, configPath } = {}) {
+export function needsBrowserProbe(probeBrowser, incident, health) {
+  return probeBrowser === true || (incident && health.status === "healthy");
+}
+
+export async function recover(id, { apply = false, force = false, probeBrowser = false, configPath } = {}) {
   const site = sites.find(s => s.id === id && s.id !== "fr");
   assert.ok(site, "unsupported_local_site");
   const settings = await json(configPath ?? join(homedir(), ".codex", "catalog-autonomy", "sites.json"));
@@ -150,8 +154,11 @@ export async function recover(id, { apply = false, force = false, configPath } =
   try {
     const issues = gh("repos/Issakimho/catalog-site-monitor/issues?state=open&per_page=100");
     const incident = issues.some(i => !i.pull_request && i.user?.login === "github-actions[bot]" && i.title === `[Catalogue] ${new URL(site.origin).hostname}` && i.body?.includes(`<!-- catalog-site-monitor-v1:${id} -->`));
-    if (incident && health.status === "healthy") health = await browserHealth(site);
+    if (needsBrowserProbe(probeBrowser, incident, health)) health = await browserHealth(site);
   } catch { health = { ...health, status: "warning", codes: [...(health.codes ?? []), "incident_read_failed"] }; }
+  // A local signal requests an independent live recheck, never a forced refresh.
+  // Keep the recheck available even when the GitHub issue lookup failed.
+  if (probeBrowser && health.codes?.includes("incident_read_failed")) health = await browserHealth(site);
   let decision = decideRecovery(health, state);
   if (force && !state.pendingSha) decision = "refresh"; // Manual recovery only; the saved automation never sets this flag.
   if (!apply || ["healthy", "cooldown", "retry_limit"].includes(decision)) return { site: id, decision, status: health.status, codes: health.codes, statePath };
@@ -276,7 +283,7 @@ export async function recover(id, { apply = false, force = false, configPath } =
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const result = await recover(process.argv[2], { apply: process.argv.includes("--run"), force: process.argv.includes("--force"), configPath: process.env.CATALOG_RECOVERY_CONFIG });
+    const result = await recover(process.argv[2], { apply: process.argv.includes("--run"), force: process.argv.includes("--force"), probeBrowser: process.argv.includes("--probe-browser"), configPath: process.env.CATALOG_RECOVERY_CONFIG });
     console.log(JSON.stringify(result));
     if (["failed", "retry_limit"].includes(result.decision)) process.exitCode = 1;
   } catch { console.error(JSON.stringify({ site: process.argv[2], decision: "failed", code: "preflight_failed" })); process.exitCode = 1; }

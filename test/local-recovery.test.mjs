@@ -1,8 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decideRecovery, assertChangedFiles, collectionEnvironment, pendingDisposition } from "../scripts/local-recovery.mjs";
+import { decideRecovery, assertChangedFiles, collectionEnvironment, pendingDisposition, needsBrowserProbe } from "../scripts/local-recovery.mjs";
 const H = 3_600_000;
 const now = 100 * H;
+test("local monitor signal rechecks live browser without bypassing recovery limits", () => {
+  assert.equal(needsBrowserProbe(true, false, { status: "healthy" }), true);
+  assert.equal(needsBrowserProbe(true, false, { status: "critical" }), true);
+  assert.equal(needsBrowserProbe(false, false, { status: "healthy" }), false);
+  assert.equal(needsBrowserProbe(false, true, { status: "healthy" }), true);
+  assert.equal(decideRecovery({ status: "healthy", ageHours: 5 }, {}, now), "healthy");
+  assert.equal(decideRecovery({ status: "warning" }, { attempts: [now - H] }, now), "cooldown");
+  assert.equal(decideRecovery({ status: "critical" }, { attempts: [now-H, now-3*H] }, now), "retry_limit");
+});
 test("healthy local checks do not collect", () => assert.equal(decideRecovery({ status: "healthy", ageHours: 10 }, {}, now), "healthy"));
 test("a rejected or superseded push cannot permanently pin recovery", () => {
   assert.equal(pendingDisposition("a", "a", true), "verify");
