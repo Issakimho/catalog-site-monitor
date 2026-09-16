@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-15T05:24:26.501Z",
+  "checkedAt": "2026-09-16T00:49:21.678Z",
   "sites": [
     {
       "site": "fr",
@@ -101,8 +101,10 @@
     },
     {
       "site": "de",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "snapshot_overdue"
+      ],
       "probes": [
         {
           "profile": "drawing",
@@ -114,15 +116,15 @@
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
@@ -135,15 +137,15 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         }
       ]
