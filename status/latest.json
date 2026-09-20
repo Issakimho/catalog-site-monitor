@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-19T00:39:17.005Z",
+  "checkedAt": "2026-09-20T00:25:18.711Z",
   "sites": [
     {
       "site": "fr",
@@ -86,8 +86,8 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -232,8 +232,8 @@
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -246,8 +246,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         }
       ]
