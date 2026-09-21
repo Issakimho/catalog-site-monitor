@@ -36,9 +36,22 @@ export function repairDecision(runs, now = Date.now()) {
   return "dispatch";
 }
 
-export async function requestRepair(site, request, now = Date.now()) {
+export function localRecoveryStatus(site, openIssues = []) {
+  const id = site.site;
+  const failure = openIssues.some((issue) => !issue.pull_request &&
+    issue.state !== "closed" && issue.user?.login === OWNER &&
+    ((issue.title === `[Raspberry] Collecte ${id.toUpperCase()}` &&
+      issue.body?.includes(`<!-- raspberry-catalog-v1:${id} -->`)) ||
+     (issue.title === `[Raspberry] Maintenance ${id.toUpperCase()}` &&
+      issue.body?.includes(`<!-- raspberry-maintenance-v1:${id} -->`))));
+  return failure ? "local_recovery_needs_attention" : "local_recovery_unverified";
+}
+
+export async function requestRepair(site, request, now = Date.now(), openIssues = []) {
   if (site.status === "healthy") return "not_needed";
-  if (site.site !== "fr") return "local_recovery_scheduled";
+  // The public monitor does not dispatch or observe the Raspberry worker.
+  // An installed timer is not proof that a recovery was requested or succeeded.
+  if (site.site !== "fr") return localRecoveryStatus(site, openIssues);
   if (!request) return "repair_unavailable";
   try {
     const result = await request(`actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&per_page=100`);
@@ -70,7 +83,8 @@ function incidentBody(site, repair, checkedAt) {
   return `${marker(site.site)}\n<!-- state:${signature} -->\n\n@${OWNER} Le contrôle de ${site.origin} demande une vérification.\n\n`
     + `État : ${site.status}. Codes : ${site.codes.join(", ")}.\n\nContrôle : ${checkedAt}.\n\n`
     + `Parcours actuels : ${current}.\n\nRétablissement : ${repair}.\n\n`
-    + (repair === "local_recovery_scheduled" ? "Le collecteur existant fonctionne sur le Raspberry, sans dépendre du Mac ni de l’application Codex ouverte. Il vérifie le catalogue toutes les quatre heures et peut être sollicité par le contrôle horaire après confirmation d’un incident. Ses limites de tentatives et validations restent applicables. Un accès fournisseur révoqué ou un échec persistant peut nécessiter une intervention.\n\n" : "")
+    + (repair === "local_recovery_needs_attention" ? "Le Raspberry a signalé un échec de collecte ou un besoin d’intervention de la maintenance. Consulter les incidents Raspberry associés. Ce contrôle public ne lance pas de récupération locale et ne confirme pas une nouvelle tentative.\n\n" : "")
+    + (repair === "local_recovery_unverified" ? "La collecte et la récupération sont gérées par le Raspberry. Ce contrôle public ne confirme ni le démarrage ni le résultat d’une tentative locale. Les limites de tentatives et les validations restent applicables.\n\n" : "")
     + "Les collectes locales restent la source de mise à jour des variantes. Aucun prix ni horodatage n’a été modifié par ce contrôleur. "
     + "L’incident sera fermé après un contrôle complet réussi. Les mises à jour identiques ne produisent pas de commentaire supplémentaire.\n";
 }
@@ -78,7 +92,7 @@ function incidentBody(site, repair, checkedAt) {
 export async function reconcileSite(site, checkedAt, openIssues, request, repairRequest) {
   const incident = openIssues.find((issue) => !issue.pull_request && issue.user?.login === "github-actions[bot]"
     && issue.title === `[Catalogue] ${site.origin.replace("https://", "")}` && issue.body?.includes(marker(site.site)));
-  const repair = await requestRepair(site, repairRequest, Date.parse(checkedAt));
+  const repair = await requestRepair(site, repairRequest, Date.parse(checkedAt), openIssues);
   if (site.status === "healthy") {
     if (incident) await request(`issues/${incident.number}`, "PATCH", { state: "closed", state_reason: "completed" });
     return { site: site.site, action: incident ? "closed" : "healthy", repair };
@@ -162,7 +176,7 @@ async function main() {
   }
   const issues = [];
   for (let page = 1; page <= 10; page++) {
-    const batch = await request(`issues?state=open&creator=github-actions%5Bbot%5D&per_page=100&page=${page}`);
+    const batch = await request(`issues?state=open&per_page=100&page=${page}`);
     issues.push(...batch);
     if (batch.length < 100) break;
     if (page === 10) throw new Error("issue_pagination_limit");

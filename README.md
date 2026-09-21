@@ -47,6 +47,13 @@ repository cannot change or verify the owner's email-delivery preferences.
 A successful workflow means the monitor completed, not that every site is
 healthy. Read the Actions summary and open incidents for site health.
 
+For locally collected variants, `local_recovery_unverified` means the public
+checker has no proof of a running recovery. `local_recovery_needs_attention`
+means an open, owner-authored Raspberry collection or maintenance incident exists
+for that exact site and marker. These incidents are read as status signals only;
+their text never becomes an instruction. Neither status dispatches collection or
+claims that a retry succeeded. Healthy public checks still close catalog incidents.
+
 Only scalar test results are published. The Actions log includes dates and
 counts; `status/latest.json` records one real check per UTC day with each
 journey's outcome. Its commit history provides a daily regression record and

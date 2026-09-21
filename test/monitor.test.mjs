@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { sites } from "../config/sites.mjs";
 import { inspectSnapshot, fetchBytes, browserEnvironment, checkSite } from "../scripts/check.mjs";
-import { repairDecision, requestRepair, repairAccessAvailable, reconcileSite, publishDailySummary, validateReport, githubClient } from "../scripts/notify.mjs";
+import { repairDecision, requestRepair, repairAccessAvailable, reconcileSite, publishDailySummary, validateReport, githubClient, localRecoveryStatus } from "../scripts/notify.mjs";
 
 const NOW = Date.parse("2026-09-13T12:00:00.000Z");
 const date = (hours = 0) => new Date(NOW - hours * 3_600_000).toISOString();
@@ -79,11 +79,29 @@ test("private recovery is optional, bounded and targets only the fixed main-bran
   assert.equal(repairDecision([run(1), run(2)], NOW), "repair_limit_reached");
   assert.equal(repairDecision([run(7)], NOW), "dispatch");
   assert.equal(await requestRepair(bad(sites[0]), undefined, NOW), "repair_unavailable");
-  assert.equal(await requestRepair(bad(sites[2]), () => assert.fail("must not dispatch variant"), NOW), "local_recovery_scheduled");
+  assert.equal(await requestRepair(bad(sites[2]), () => assert.fail("must not dispatch variant"), NOW), "local_recovery_unverified");
   const calls = [];
   assert.equal(await requestRepair(bad(sites[0]), async (...args) => { calls.push(args); return { workflow_runs: [] }; }, NOW), "repair_requested");
   assert.deepEqual(calls[1], ["actions/workflows/catalog-watchdog.yml/dispatches", "POST", { ref: "main" }]);
   assert.equal(await requestRepair(bad(sites[0]), async () => { throw new Error("secret"); }, NOW), "repair_unavailable");
+});
+
+test("local recovery claims require authenticated, site-specific failure evidence", async () => {
+  const italian = bad(sites.find((site) => site.id === "it"));
+  const failure = { title: "[Raspberry] Collecte IT", state: "open", user: { login: "Issakimho" },
+    body: "<!-- raspberry-catalog-v1:it -->" };
+  assert.equal(localRecoveryStatus(italian), "local_recovery_unverified");
+  assert.equal(localRecoveryStatus(italian, [failure]), "local_recovery_needs_attention");
+  for (const change of [{ state: "closed" }, { user: { login: "stranger" } },
+    { title: "[Raspberry] Collecte DE" }, { body: "untrusted prose" }, { pull_request: {} }]) {
+    assert.equal(localRecoveryStatus(italian, [{ ...failure, ...change }]), "local_recovery_unverified");
+  }
+  const maintenance = { ...failure, title: "[Raspberry] Maintenance IT", body: "<!-- raspberry-maintenance-v1:it -->" };
+  assert.equal(localRecoveryStatus(italian, [maintenance]), "local_recovery_needs_attention");
+  const calls = [];
+  await reconcileSite(italian, date(), [failure], async (...args) => { calls.push(args); return { number: 34 }; });
+  assert.match(calls[0][2].body, /local_recovery_needs_attention/);
+  assert.doesNotMatch(calls[0][2].body, /local_recovery_scheduled/);
 });
 
 test("incidents are deduplicated, update only on meaningful change and close after recovery", async () => {
