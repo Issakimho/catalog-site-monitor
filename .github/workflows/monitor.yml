@@ -62,3 +62,6 @@ jobs:
           PCARCHITECTE_ACTIONS_TOKEN: ${{ secrets.PCARCHITECTE_ACTIONS_TOKEN }}
           PCARCHITECTE_REPAIR_REPOSITORY: ${{ secrets.PCARCHITECTE_REPAIR_REPOSITORY }}
         run: node scripts/verify-repair-bridge.mjs
+      - name: Require healthy public catalogs now and twelve hours ahead
+        if: success()
+        run: node scripts/health-gate.mjs

@@ -44,8 +44,11 @@ enable Actions notifications for failed workflow runs. The latter covers a
 broken monitor, such as a missing browser or a rejected GitHub API request. This
 repository cannot change or verify the owner's email-delivery preferences.
 
-A successful workflow means the monitor completed, not that every site is
-healthy. Read the Actions summary and open incidents for site health.
+A successful workflow requires every site and every tested journey to be healthy,
+now and twelve hours ahead. Warnings and critical incidents fail a final health
+gate after incident reconciliation and the daily record, so alerts are preserved.
+Read the Actions summary and open incidents for the affected sites. GitHub Actions
+email delivery still depends on the owner's notification settings.
 
 For locally collected variants, `local_recovery_unverified` means the public
 checker has no proof of a running recovery. `local_recovery_needs_attention`
