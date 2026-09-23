@@ -87,7 +87,7 @@ user timers on an always-on Raspberry Pi. They were migrated on 14 September
 market; their previous Mac Codex collectors are paused. Each timer checks every
 four hours, with a small randomized delay and a shared serialization lock.
 It exits without installing or collecting while the public catalog is healthy
-and less than twenty hours old. A verified bot-created incident also causes a
+and less than twelve hours old. A verified bot-created incident also causes a
 browser recheck, including failures that do not affect the snapshot itself.
 
 Recovery creates a clean, isolated clone of that site's main branch. Failed
