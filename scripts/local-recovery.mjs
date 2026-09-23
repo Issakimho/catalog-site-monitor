@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir, realpath, rename, open, access } from "node:fs/promises";
+import { readFile, writeFile, mkdir, realpath, rename, open, access, copyFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createServer } from "node:net";
@@ -21,10 +21,17 @@ const gh = path => JSON.parse(execFileSync("gh", ["api", path], { encoding: "utf
 export function decideRecovery(health, state = {}, now = Date.now()) {
   if (state.pendingSha) return "verify_pending";
   const attempts = (state.attempts ?? []).filter(t => now - t < 24 * HOUR);
-  if (health.status === "healthy" && health.ageHours < 20) return "healthy";
+  if (health.status === "healthy" && health.ageHours < 12) return "healthy";
   if (attempts.length >= 2) return "retry_limit";
   if (attempts.some(t => now - t < 2 * HOUR)) return "cooldown";
   return "refresh";
+}
+
+export function canResumeCandidate(state, now = Date.now()) {
+  if (state.pendingSha || !state.lastWorkspace || !state.lastFailure) return false;
+  if (!/^(run (build[:a-z-]*|verify:publication)|candidate_integrity|candidate_browser)$/.test(state.lastFailure.step ?? "")) return false;
+  const attempts = (state.resumeAttempts ?? []).filter(t => now - t < 24 * HOUR);
+  return attempts.length < 2 && !attempts.some(t => now - t < 30 * 60_000);
 }
 
 export function assertChangedFiles(changed, allowed) {
@@ -160,6 +167,22 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
   // Keep the recheck available even when the GitHub issue lookup failed.
   if (probeBrowser && health.codes?.includes("incident_read_failed")) health = await browserHealth(site);
   let decision = decideRecovery(health, state);
+  // Revalidate already-collected data before spending another supplier attempt.
+  // A resume never manufactures dates or bypasses publication/market checks.
+  let resumeSource = null;
+  if (!state.pendingSha && canResumeCandidate(state)) {
+    try {
+      const source = await realpath(state.lastWorkspace);
+      assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
+      assertRepository(source, config.repository);
+      const candidate = inspectSnapshot(await readFile(join(source, `public${site.data}catalog-current.json`)),
+        await readFile(join(source, `public${site.data}catalog-manifest.json`)), site);
+      if (candidate.status === "healthy" && Date.parse(candidate.generatedAt) > Date.parse(health.generatedAt ?? "1970-01-01")) {
+        resumeSource = source;
+        decision = "resume_candidate";
+      }
+    } catch { /* Unusable candidates remain archived; normal collection rules apply. */ }
+  }
   if (force && !state.pendingSha) decision = "refresh"; // Manual recovery only; the saved automation never sets this flag.
   if (!apply || ["healthy", "cooldown", "retry_limit"].includes(decision)) return { site: id, decision, status: health.status, codes: health.codes, statePath };
 
@@ -202,8 +225,9 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
         throw new Error(disposition);
       }
     }
-    if (decision === "refresh") {
-      state.attempts = [...(state.attempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
+    if (["refresh", "resume_candidate"].includes(decision)) {
+      if (decision === "resume_candidate") state.resumeAttempts = [...(state.resumeAttempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
+      else state.attempts = [...(state.attempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
       await save(statePath, state);
       const work = join(baseDir, `attempt-${Date.now()}`);
       const log = `${work}.log`;
@@ -218,14 +242,27 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       assert.equal(await realpath(manifest.target.root), await realpath(config.root));
       const allowed = manifest.operations.catalog.refresh.allowedChangedFiles;
       assert.deepEqual(allowed, [config.demo, `public${site.data}catalog-current.json`, `public${site.data}catalog-manifest.json`]);
-      // Read existing credentials in place through the target's approved loader. Never persist values.
-      const { loadAmazonCredentials } = await import(pathToFileURL(join(work, "scripts/amazon-credentials.mjs")));
-      const creds = await loadAmazonCredentials({ envPath: config.credentials });
-      assert.equal(creds.missing.length, 0, "credentials_missing");
-      assert.equal(creds.marketplace, id.toUpperCase(), "wrong_credential_market");
-      assert.equal(creds.associateTag, config.tag, "wrong_affiliate_identity");
-      const env = collectionEnvironment(process.env, creds, config.credentials, health.status !== "healthy");
-      for (const args of [["ci", "--ignore-scripts"], ["run", "check:amazon"], ["run", "fetch:amazon-catalog"], ["run", config.build], ["run", "verify:publication"]]) {
+      let env;
+      if (decision === "resume_candidate") {
+        step = "resume_source_integrity";
+        assertChangedFiles([...git(resumeSource, "diff", "--name-only", "HEAD").split("\n"),
+          ...git(resumeSource, "ls-files", "--others", "--exclude-standard").split("\n")].filter(Boolean), allowed);
+        const sourceBase = git(resumeSource, "rev-parse", "HEAD");
+        git(work, "merge-base", "--is-ancestor", sourceBase, base);
+        await copyFile(join(resumeSource, config.demo), join(work, config.demo));
+      } else {
+        // Supplier credentials are only read when a new collection is needed.
+        const { loadAmazonCredentials } = await import(pathToFileURL(join(work, "scripts/amazon-credentials.mjs")));
+        const creds = await loadAmazonCredentials({ envPath: config.credentials });
+        assert.equal(creds.missing.length, 0, "credentials_missing");
+        assert.equal(creds.marketplace, id.toUpperCase(), "wrong_credential_market");
+        assert.equal(creds.associateTag, config.tag, "wrong_affiliate_identity");
+        env = collectionEnvironment(process.env, creds, config.credentials, health.status !== "healthy");
+      }
+      const commands = [["ci", "--ignore-scripts"],
+        ...(decision === "resume_candidate" ? [] : [["run", "check:amazon"], ["run", "fetch:amazon-catalog"]]),
+        ["run", config.build], ["run", "verify:publication"]];
+      for (const args of commands) {
         step = args.join(" ");
         console.log(JSON.stringify({ site: id, step, status: "running" }));
         // Only collection receives supplier credentials; validation and browser processes do not.

@@ -193,3 +193,16 @@ npm run check
 `check` only reads public sites and writes `reports/latest.json` locally.
 Do not run `notify` locally: it requires the trusted main-branch GitHub context
 and write credentials. No privileged workflow runs on pull requests or forks.
+
+### Preventive refresh and candidate recovery
+
+Local variants become due for refresh at 12 hours, leaving time for a failed
+publication to recover before the 48-hour offer expiry. Supplier calls remain
+limited to two attempts per rolling day. A failed build or publication validation
+can resume from its saved, still-healthy candidate without another supplier call.
+The source must be a private worker-created checkout of the same repository, its
+changes must be catalog-only, and its base must be an ancestor of current main.
+Only the original demo data is copied into a new checkout: the current code rebuilds
+and validates the snapshot, then checks the live deployment as usual. Two resume
+attempts per day and a 30-minute cooldown bound validation retries separately.
+Expired data is never redated or used to bypass a failing publication gate.

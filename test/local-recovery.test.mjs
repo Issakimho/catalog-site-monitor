@@ -22,7 +22,7 @@ test("a rejected or superseded push cannot permanently pin recovery", () => {
   assert.equal(decideRecovery({ status: "healthy", ageHours: 2 }, state, now), "healthy");
 });
 test("renew before daily limit and repair incidents", () => {
-  assert.equal(decideRecovery({ status: "healthy", ageHours: 20 }, {}, now), "refresh");
+  assert.equal(decideRecovery({ status: "healthy", ageHours: 12 }, {}, now), "refresh");
   assert.equal(decideRecovery({ status: "critical" }, {}, now), "refresh");
   assert.equal(decideRecovery({ status: "warning" }, {}, now), "refresh");
 });
@@ -43,4 +43,16 @@ test("supplier environment cannot inherit another market or paid model keys", ()
   assert.equal(env.AMAZON_CREATORS_SECRET, "supplier");
   assert.equal(env.AMAZON_QUERY_BATCH_SIZE, "0");
   for (const key of ["OPENAI_API_KEY", "GH_TOKEN", "AMAZON_QUERY_BATCH_INDEX"]) assert.equal(env[key], undefined);
+});
+
+test("fresh candidates can resume after validation errors without bypassing collection budgets", async () => {
+  const { canResumeCandidate } = await import('../scripts/local-recovery.mjs');
+  const state = { lastWorkspace: '/private/attempt-1', lastFailure: { step: 'run verify:publication' }, attempts: [now-H,now-3*H] };
+  assert.equal(canResumeCandidate(state,now),true);
+  assert.equal(canResumeCandidate({...state,pendingSha:'deployed'},now),false);
+  assert.equal(canResumeCandidate({...state,lastFailure:{step:'run fetch:amazon-catalog'}},now),false);
+  assert.equal(canResumeCandidate({...state,resumeAttempts:[now-60_000]},now),false);
+  assert.equal(canResumeCandidate({...state,resumeAttempts:[now-H,now-2*H]},now),false);
+  assert.equal(canResumeCandidate({...state,resumeAttempts:[now-25*H]},now),true);
+  assert.deepEqual(state.attempts,[now-H,now-3*H]);
 });
