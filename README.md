@@ -99,7 +99,7 @@ an exact three-file publication allowlist and a concurrent-commit check.
 
 Two collection attempts per rolling twenty-four hours and a two-hour cooldown
 bound failures. A deployment awaiting confirmation is rechecked before any new
-collection. A rejected or superseded push clears that pending reference without
+collection. A rejected or superseded push, or a completed failed CI run, clears that pending reference without
 discarding the candidate or retry budget. Success requires GitHub CI, a successful Vercel status for the exact
 commit, byte-identical public catalog files and healthy browser journeys.
 The public monitor then closes the incident after its own checks. Code defects,

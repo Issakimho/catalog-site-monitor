@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decideRecovery, assertChangedFiles, collectionEnvironment, pendingDisposition, needsBrowserProbe } from "../scripts/local-recovery.mjs";
+import { decideRecovery, assertChangedFiles, collectionEnvironment, pendingDisposition, hasTerminalCheckFailure, needsBrowserProbe } from "../scripts/local-recovery.mjs";
 const H = 3_600_000;
 const now = 100 * H;
 test("local monitor signal rechecks live browser without bypassing recovery limits", () => {
@@ -20,6 +20,12 @@ test("a rejected or superseded push cannot permanently pin recovery", () => {
   const state = { pendingSha: null, attempts: [now - 4 * H] };
   assert.equal(decideRecovery({ status: "critical" }, state, now), "refresh");
   assert.equal(decideRecovery({ status: "healthy", ageHours: 2 }, state, now), "healthy");
+});
+test("terminal CI failure releases a pending commit only after all checks finish", () => {
+  assert.equal(hasTerminalCheckFailure([]), false);
+  assert.equal(hasTerminalCheckFailure([{ status: "in_progress", conclusion: null }, { status: "completed", conclusion: "failure" }]), false);
+  assert.equal(hasTerminalCheckFailure([{ status: "completed", conclusion: "success" }]), false);
+  assert.equal(hasTerminalCheckFailure([{ status: "completed", conclusion: "failure" }]), true);
 });
 test("renew before daily limit and repair incidents", () => {
   assert.equal(decideRecovery({ status: "healthy", ageHours: 12 }, {}, now), "refresh");

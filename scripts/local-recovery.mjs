@@ -43,6 +43,12 @@ export function pendingDisposition(pendingSha, remoteSha, isAncestor) {
   return isAncestor ? "pending_superseded" : "push_not_published";
 }
 
+export function hasTerminalCheckFailure(checks) {
+  return checks.length > 0
+    && checks.every(check => check.status === "completed")
+    && checks.some(check => !["success", "skipped", "neutral"].includes(check.conclusion));
+}
+
 export function assertRepository(cwd, repository) {
   const allowed = [`https://github.com/${repository}.git`, `https://github.com/${repository}`, `git@github.com:${repository}.git`];
   for (const args of [["--all"], ["--push", "--all"]]) {
@@ -223,6 +229,13 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
         state.pendingSha = null; state.pendingWorkspace = null;
         await save(statePath, state);
         throw new Error(disposition);
+      }
+      const checks = gh(`repos/${config.repository}/commits/${state.pendingSha}/check-runs`).check_runs;
+      if (hasTerminalCheckFailure(checks)) {
+        state.lastPending = { sha: state.pendingSha, workspace: work, disposition: "ci_failed" };
+        state.pendingSha = null; state.pendingWorkspace = null;
+        await save(statePath, state);
+        throw new Error("ci_failed");
       }
     }
     if (["refresh", "resume_candidate"].includes(decision)) {
