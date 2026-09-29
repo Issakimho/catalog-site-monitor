@@ -213,7 +213,8 @@ npm run check
 
 `check` only reads public sites and writes `reports/latest.json` locally.
 Do not run `notify` locally: it requires the trusted main-branch GitHub context
-and write credentials. No privileged workflow runs on pull requests or forks.
+and write credentials. Pull requests run unit tests with read-only repository
+access; no privileged workflow runs on pull requests or forks.
 
 ### Preventive refresh and candidate recovery
 

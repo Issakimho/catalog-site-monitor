@@ -186,3 +186,13 @@ test("public workflow has one standard job, no PR privileges or dependency scrip
   assert.equal((workflow.match(/runs-on:/g) ?? []).length, 1);
   assert.equal((workflow.match(/uses: [^@]+@[a-f0-9]{40}/g) ?? []).length, 2);
 });
+
+test("pull requests run policy tests without publication credentials", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /contents: read/);
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(workflow, /npm ci --ignore-scripts/);
+  assert.match(workflow, /npm test/);
+  assert.doesNotMatch(workflow, /contents: write|issues: write|secrets\.|npm run notify|npm run check/);
+});
