@@ -93,7 +93,7 @@ browser recheck, including failures that do not affect the snapshot itself.
 Recovery creates a clean, isolated clone of that site's main branch. Failed
 candidates and user checkouts remain untouched. The worker reads the existing
 supplier credential file in place through the site's approved loader; credentials
-reach only supplier subprocesses. It never calls an AI API. Validation includes
+reach only supplier subprocesses. Routine collection makes no Codex call. Validation includes
 the site's full publication gate, current and twelve-hour browser journeys,
 an exact three-file publication allowlist and a concurrent-commit check.
 
@@ -102,8 +102,29 @@ bound failures. A deployment awaiting confirmation is rechecked before any new
 collection. A rejected or superseded push, or a completed failed CI run, clears that pending reference without
 discarding the candidate or retry budget. Success requires GitHub CI, a successful Vercel status for the exact
 commit, byte-identical public catalog files and healthy browser journeys.
-The public monitor then closes the incident after its own checks. Code defects,
-revoked provider access and an unavailable Raspberry can still require intervention.
+The public monitor then closes the incident after its own checks. Revoked provider
+access and an unavailable Raspberry still require intervention.
+
+If the full publication corpus fails only the known
+`primary_is_not_strictly_dominated` selector invariant, the Raspberry makes one
+code-repair attempt per failing base revision in 24 hours. A Codex CLI session
+uses the existing ChatGPT subscription in a disposable checkout. Its filesystem
+view excludes the machine's private home, supplier and GitHub credentials; its
+shell has no network access. It can change only existing recommendation selector
+modules, the selector regression test and the calibration digest. The collector's
+three catalog artifacts are copied from the original failed candidate unchanged.
+Build and publication tests run without network access and with pinned
+dependencies reinstalled after the coding session. The fixed npm vulnerability
+audit runs separately with network access and no site credentials.
+
+The controller checks the diff, complete publication corpus and local browser
+journeys, then opens a pull request. It merges only after the site's pull-request
+CI and every commit check succeed, provided main has not advanced and the
+candidate is still fresh. Success still requires deployment of the merged SHA,
+byte-identical live catalog files and healthy current and twelve-hour browser
+journeys. A failed code repair leaves its pull request and private logs for
+inspection and reports an incident. Other invariants and code changes outside
+this narrow scope require intervention.
 
 Private machine configuration lives outside this repository, in
 `$HOME/.codex/catalog-autonomy/sites.json`. It specifies each exact project root,
