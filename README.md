@@ -108,10 +108,11 @@ access and an unavailable Raspberry still require intervention.
 If the full publication corpus fails only the known
 `primary_is_not_strictly_dominated` selector invariant, the Raspberry makes one
 code-repair attempt per failing base revision in 24 hours. A Codex CLI session
-uses the existing ChatGPT subscription in a disposable checkout. Its filesystem
-view excludes the machine's private home, supplier and GitHub credentials; its
-shell has no network access. It can change only existing recommendation selector
-modules, the selector regression test and the calibration digest. The collector's
+uses the existing ChatGPT subscription in a disposable checkout. Codex's command
+permissions deny access to machine files outside the checkout, including its own
+login, supplier and GitHub credentials, and deny network access. The controller
+accepts changes only to existing recommendation selector modules, the selector
+regression test and the calibration digest. The collector's
 three catalog artifacts are copied from the original failed candidate unchanged.
 Build and publication tests run without network access and with pinned
 dependencies reinstalled after the coding session. The fixed npm vulnerability

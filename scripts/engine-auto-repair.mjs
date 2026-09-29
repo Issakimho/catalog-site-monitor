@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { copyFile, lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { inspectSnapshot } from "./check.mjs";
-import { repairSandboxArgs, REPAIR_WORKSPACE } from "./repair-sandbox.mjs";
+import { repairCodexConfig, repairSandboxArgs } from "./repair-sandbox.mjs";
 import {
   assertRepairChanges,
   repairPrompt
@@ -131,9 +131,9 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   for (const file of dataPaths) await copyFile(join(sourceRoot, file), join(work, file));
   const originalCandidateHash = await hashFiles(work, dataPaths);
   await run(work, "npm", ["ci", "--ignore-scripts"]);
-  await run(work, "bwrap", [...repairSandboxArgs(work, { agent: true, network: true }), "codex",
-    "--ask-for-approval", "never", "exec", "--sandbox", "workspace-write",
-    "--ephemeral", "--ignore-user-config", "-c", "sandbox_workspace_write.network_access=false", "-C", REPAIR_WORKSPACE,
+  await run(work, "codex", [
+    "--ask-for-approval", "never", "exec", "--ephemeral", "--ignore-user-config",
+    ...repairCodexConfig(dataPaths), "-C", work,
     repairPrompt({ site: id, report })
   ], 2_400_000);
   assert.equal(git(work, "rev-parse", "HEAD"), base, "agent_changed_git_history");
