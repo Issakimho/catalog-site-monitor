@@ -60,5 +60,9 @@ test("fresh candidates can resume after validation errors without bypassing coll
   assert.equal(canResumeCandidate({...state,resumeAttempts:[now-60_000]},now),false);
   assert.equal(canResumeCandidate({...state,resumeAttempts:[now-H,now-2*H]},now),false);
   assert.equal(canResumeCandidate({...state,resumeAttempts:[now-25*H]},now),true);
+  assert.equal(canResumeCandidate({...state,resumeAttempts:[now-H,now-2*H]},now,{newCodeRevision:true}),true);
+  assert.equal(canResumeCandidate({...state,lastFailure:{step:'run fetch:amazon-catalog'}},now,{newCodeRevision:true}),false);
+  assert.equal(canResumeCandidate({...state,lastFailure:{step:'engine_repair'}},now,{newCodeRevision:true}),true);
+  assert.equal(canResumeCandidate({...state,lastFailure:{step:'engine_repair'}},now),false);
   assert.deepEqual(state.attempts,[now-H,now-3*H]);
 });

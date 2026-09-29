@@ -9,6 +9,9 @@ import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 import { sites } from "../config/sites.mjs";
 import { fetchBytes, inspectSnapshot, checkSite, browserEnvironment, browserLaunchOptions } from "./check.mjs";
+import { mayAttemptRepair, parseEngineFailure, repairFingerprint } from "./engine-repair-policy.mjs";
+import { runEngineAutoRepair } from "./engine-auto-repair.mjs";
+import { repairSandboxArgs } from "./repair-sandbox.mjs";
 
 const HOUR = 3_600_000;
 const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -27,9 +30,11 @@ export function decideRecovery(health, state = {}, now = Date.now()) {
   return "refresh";
 }
 
-export function canResumeCandidate(state, now = Date.now()) {
+export function canResumeCandidate(state, now = Date.now(), { newCodeRevision = false } = {}) {
   if (state.pendingSha || !state.lastWorkspace || !state.lastFailure) return false;
+  if (state.lastFailure.step === "engine_repair") return newCodeRevision;
   if (!/^(run (build[:a-z-]*|verify:publication)|candidate_integrity|candidate_browser)$/.test(state.lastFailure.step ?? "")) return false;
+  if (newCodeRevision) return true;
   const attempts = (state.resumeAttempts ?? []).filter(t => now - t < 24 * HOUR);
   return attempts.length < 2 && !attempts.some(t => now - t < 30 * 60_000);
 }
@@ -111,12 +116,14 @@ export async function verifyProduction(config, site, sha, work) {
   return { sha, products: health.products, current: health.probes.filter(p => p.forecastHours === 0).map(p => p.cards), forecast: health.probes.filter(p => p.forecastHours === 12).map(p => p.cards) };
 }
 
-export async function verifyCandidateBrowser(work, site) {
+export async function verifyCandidateBrowser(work, site, { sandboxedPreview = false } = {}) {
   const reservation = createServer();
   await new Promise(r => reservation.listen(0, "127.0.0.1", r));
   const port = reservation.address().port;
   await new Promise(r => reservation.close(r));
-  const preview = spawn("npm", ["run", "preview", "--", "--host", "127.0.0.1", "--port", String(port)], {
+  const preview = spawn(sandboxedPreview ? "bwrap" : "npm",
+    [...(sandboxedPreview ? repairSandboxArgs(work, { network: true }) : []),
+      ...(sandboxedPreview ? ["npm"] : []), "run", "preview", "--", "--host", "127.0.0.1", "--port", String(port)], {
     cwd: work, env: browserEnvironment(), stdio: "ignore", detached: true
   });
   try {
@@ -176,9 +183,21 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
   // Revalidate already-collected data before spending another supplier attempt.
   // A resume never manufactures dates or bypasses publication/market checks.
   let resumeSource = null;
-  if (!state.pendingSha && canResumeCandidate(state)) {
+  let codeRevisionResumeSha = null;
+  const savedSource = state.lastFailure?.step === "engine_repair" ? state.engineRepair?.source : state.lastWorkspace;
+  if (!state.pendingSha && ["run verify:publication", "engine_repair"].includes(state.lastFailure?.step) && savedSource) {
     try {
-      const source = await realpath(state.lastWorkspace);
+      const source = await realpath(savedSource);
+      assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
+      assertRepository(source, config.repository);
+      const sourceBase = git(source, "rev-parse", "HEAD");
+      const remoteBase = gh(`repos/${config.repository}/git/ref/heads/main`).object.sha;
+      if (sourceBase !== remoteBase && state.codeRevisionResumeSha !== remoteBase) codeRevisionResumeSha = remoteBase;
+    } catch { /* Normal retry limits remain in force if the revision cannot be verified. */ }
+  }
+  if (!state.pendingSha && canResumeCandidate(state, Date.now(), { newCodeRevision: Boolean(codeRevisionResumeSha) })) {
+    try {
+      const source = await realpath(savedSource);
       assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
       assertRepository(source, config.repository);
       const candidate = inspectSnapshot(await readFile(join(source, `public${site.data}catalog-current.json`)),
@@ -239,7 +258,10 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       }
     }
     if (["refresh", "resume_candidate"].includes(decision)) {
-      if (decision === "resume_candidate") state.resumeAttempts = [...(state.resumeAttempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
+      if (decision === "resume_candidate") {
+        state.resumeAttempts = [...(state.resumeAttempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
+        if (codeRevisionResumeSha) state.codeRevisionResumeSha = codeRevisionResumeSha;
+      }
       else state.attempts = [...(state.attempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
       await save(statePath, state);
       const work = join(baseDir, `attempt-${Date.now()}`);
@@ -322,7 +344,51 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
     try { execFileSync("gh", ["workflow", "run", "monitor.yml", "--repo", "Issakimho/catalog-site-monitor"], { timeout: 30_000, stdio: "pipe" }); } catch {}
     return { site: id, decision: "recovered", ...proof };
   } catch (error) {
+    if (step === "run verify:publication" && state.lastWorkspace && !state.pendingSha) {
+      try {
+        const report = parseEngineFailure(await readFile(`${state.lastWorkspace}.log`, "utf8"));
+        if (report) {
+          const base = git(state.lastWorkspace, "rev-parse", "HEAD");
+          const fingerprint = repairFingerprint(config.repository, base, report);
+          if (mayAttemptRepair(state, fingerprint)) {
+            state.engineRepair = { fingerprint, invariant: report.invariant, base, source: state.lastWorkspace,
+              startedAt: new Date().toISOString(), status: "running" };
+            await save(statePath, state);
+            try {
+              const repair = await runEngineAutoRepair({
+                id, report, config, site, baseDir, source: state.lastWorkspace,
+                assertRepository, verifyCandidateBrowser, verifyProduction,
+                runCommand: ({ cwd, program, args, logPath, env, timeout }) => command(cwd, program, args, logPath, env, timeout, lockPath),
+                onPullRequest: async ({ prUrl, head, workspace }) => {
+                  state.engineRepair = { ...state.engineRepair, status: "pr_checks", prUrl, head };
+                  state.lastWorkspace = workspace;
+                  await save(statePath, state);
+                },
+                onMerged: async ({ sha, workspace, prUrl }) => {
+                  state.engineRepair = { ...state.engineRepair, status: "pending_production", prUrl, sha };
+                  state.pendingSha = sha;
+                  state.pendingWorkspace = workspace;
+                  state.lastWorkspace = workspace;
+                  await save(statePath, state);
+                }
+              });
+              state = { ...state, pendingSha: null, pendingWorkspace: null, lastFailure: null,
+                lastSuccess: new Date().toISOString(), proof: repair.proof,
+                engineRepair: { ...state.engineRepair, status: "recovered", sha: repair.sha, prUrl: repair.prUrl } };
+              await save(statePath, state);
+              try { execFileSync("gh", ["workflow", "run", "monitor.yml", "--repo", "Issakimho/catalog-site-monitor"], { timeout: 30_000, stdio: "pipe" }); } catch {}
+              return { site: id, decision: "recovered", repair: { invariant: report.invariant, prUrl: repair.prUrl }, ...repair.proof };
+            } catch (repairError) {
+              const code = /^[a-z_]+$/.test(repairError.message) ? repairError.message : "validation_failed";
+              state.engineRepair = { ...state.engineRepair, status: state.pendingSha ? "pending_production" : "needs_attention", code };
+              step = "engine_repair";
+            }
+          }
+        }
+      } catch { /* Preserve the original publication failure if diagnosis itself fails. */ }
+    }
     state.lastFailure = { at: new Date().toISOString(), step, code: /^[a-z_]+$/.test(error.message) ? error.message : "validation_failed" };
+    if (step === "engine_repair") state.lastFailure.code = state.engineRepair?.code ?? "validation_failed";
     await save(statePath, state);
     return { site: id, decision: "failed", ...state.lastFailure, workspace: state.lastWorkspace, statePath };
   } finally {
