@@ -12,7 +12,9 @@ export function repairSandboxArgs(work, { agent = false, network = false, home =
   return [
     "--ro-bind", "/", "/",
     "--tmpfs", home,
-    "--ro-bind", join(home, ".local"), join(home, ".local"),
+    "--dir", join(home, ".local"),
+    "--ro-bind", join(home, ".local", "bin"), join(home, ".local", "bin"),
+    "--ro-bind", join(home, ".local", "lib"), join(home, ".local", "lib"),
     "--dir", join(home, "workspace"),
     "--bind", work, REPAIR_WORKSPACE,
     "--ro-bind", join(work, ".git"), join(REPAIR_WORKSPACE, ".git"),
