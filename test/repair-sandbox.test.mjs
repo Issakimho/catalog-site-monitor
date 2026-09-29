@@ -8,7 +8,9 @@ test("the repair sandbox mounts only a disposable checkout and required runtime"
   assert.deepEqual(args.slice(0, 5), ["--ro-bind", "/", "/", "--tmpfs", "/home/imho"]);
   assert.ok(args.includes(REPAIR_WORKSPACE));
   assert.ok(args.includes("/home/imho/.codex/auth.json"));
-  assert.ok(args.includes("/home/imho/.local"));
+  assert.ok(args.includes("/home/imho/.local/bin"));
+  assert.ok(args.includes("/home/imho/.local/lib"));
+  assert.ok(!args.includes("/home/imho/.local/state"));
   assert.ok(args.includes(`${work}/.git`));
   assert.ok(args.includes(`${work}/node_modules`));
   assert.ok(!args.includes("/home/imho/.config/gh"));
