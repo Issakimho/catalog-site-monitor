@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-29T00:09:45.019Z",
+  "checkedAt": "2026-09-30T05:59:43.892Z",
   "sites": [
     {
       "site": "fr",
@@ -121,8 +121,8 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -142,8 +142,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
@@ -156,8 +156,8 @@
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
@@ -205,8 +205,8 @@
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -226,8 +226,8 @@
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
