@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertProtectedContracts, candidatePaths, publicationPlan, repairEnvironment, validatedPullRequest } from "../scripts/engine-auto-repair.mjs";
+import { assertRepairPullRequest, assertProtectedContracts, candidatePaths, publicationPlan, repairEnvironment, validatedPullRequest } from "../scripts/engine-auto-repair.mjs";
 
 test("the coding process does not inherit supplier or GitHub credentials", () => {
   const env = repairEnvironment({ PATH: "/bin", HOME: "/home/imho", CODEX_HOME: "/home/imho/.codex", LANG: "en_US.UTF-8",
@@ -44,4 +44,17 @@ test("repairs append regression coverage and cannot weaken tests or replace the 
   assert.throws(() => assertProtectedContracts("old test\n", "old test\n", before, before));
   assert.throws(() => assertProtectedContracts("test", "test plus", before, { ...before, digestCommand: "untrusted" }));
   assert.throws(() => assertProtectedContracts("test", "test plus", before, { ...before, sourceRevision: "fake" }));
+});
+
+
+test("resuming a repair never accepts a replaced head, advanced base or an unmerged closed PR", () => {
+  const expected = { head: 'a'.repeat(40), base: 'b'.repeat(40) };
+  const pr = { state: 'open', head: { sha: expected.head }, base: { sha: expected.base }, merged: false };
+  assert.equal(assertRepairPullRequest(pr, expected), 'wait_and_merge');
+  assert.throws(() => assertRepairPullRequest({ ...pr, head: { sha: 'x' } }, expected));
+  assert.throws(() => assertRepairPullRequest({ ...pr, base: { sha: 'x' } }, expected));
+  assert.throws(() => assertRepairPullRequest({ ...pr, state: 'closed' }, { ...expected, allowMerged: true }));
+  const merged = { ...pr, state: 'closed', merged: true, merge_commit_sha: 'c'.repeat(40) };
+  assert.equal(assertRepairPullRequest(merged, { ...expected, allowMerged: true }), 'verify_merged');
+  assert.throws(() => assertRepairPullRequest(merged, expected));
 });

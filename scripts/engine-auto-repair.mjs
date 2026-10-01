@@ -77,6 +77,17 @@ function assertProtectedContracts(beforeTest, afterTest, beforeCalibration, afte
   assert.match(afterCalibration.sha256, /^[a-f0-9]{64}$/);
 }
 
+function assertRepairPullRequest(pr, { head, base, allowMerged = false }) {
+  assert.equal(pr.head.sha, head, "repair_pr_head_changed");
+  if (pr.merged && allowMerged) {
+    assert.match(pr.merge_commit_sha, /^[a-f0-9]{40}$/);
+    return "verify_merged";
+  }
+  assert.equal(pr.state, "open", "repair_pr_not_open");
+  assert.equal(pr.base.sha, base, "repair_pr_base_changed");
+  return "wait_and_merge";
+}
+
 function validatedPullRequest(checks, runs) {
   const ci = runs.filter(run => run.path === ".github/workflows/ci.yml" && run.event === "pull_request");
   if (ci.some(run => run.status === "completed" && run.conclusion !== "success")) throw new Error("repair_ci_failed");
@@ -227,19 +238,28 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
     "repair_pr_not_confirmed");
   const prNumber = Number(number);
   await onPullRequest({ prUrl, prNumber, head, workspace: work });
-  await waitForPullRequestChecks(config.repository, head, work);
-  git(work, "fetch", "--no-tags", "origin", "main");
-  assert.equal(git(work, "rev-parse", "origin/main"), base, "repair_base_advanced");
-  assert.equal(inspectSnapshot(await readFile(join(work, `public${site.data}catalog-current.json`)),
-    await readFile(join(work, `public${site.data}catalog-manifest.json`)), site).status, "healthy", "repair_candidate_expired");
-  const pr = ghJson(`repos/${config.repository}/pulls/${prNumber}`, work);
-  assert.equal(pr.state, "open", "repair_pr_not_open");
-  assert.equal(pr.head.sha, head, "repair_pr_head_changed");
-  assert.equal(pr.base.sha, base, "repair_pr_base_changed");
-  const merged = JSON.parse(gh(["api", `repos/${config.repository}/pulls/${prNumber}/merge`, "--method", "PUT",
-    "-f", "merge_method=squash", "-f", `sha=${head}`, "-f", `commit_title=fix(recommendations): recover ${id.toUpperCase()} catalog`], work));
-  assert.equal(merged.merged, true, "repair_merge_failed");
-  const sha = merged.sha;
+  return finishEngineRepair({ id, config, site, work, base, head, prUrl, prNumber, onMerged, verifyProduction });
+}
+
+async function finishEngineRepair({ id, config, site, work, base, head, prUrl, prNumber, onMerged, verifyProduction }) {
+  let pr = ghJson(`repos/${config.repository}/pulls/${prNumber}`, work);
+  assertRepairPullRequest(pr, { head, base, allowMerged: true });
+  let sha;
+  if (pr.merged) {
+    sha = pr.merge_commit_sha;
+  } else {
+    await waitForPullRequestChecks(config.repository, head, work);
+    git(work, "fetch", "--no-tags", "origin", "main");
+    assert.equal(git(work, "rev-parse", "origin/main"), base, "repair_base_advanced");
+    assert.equal(inspectSnapshot(await readFile(join(work, `public${site.data}catalog-current.json`)),
+      await readFile(join(work, `public${site.data}catalog-manifest.json`)), site).status, "healthy", "repair_candidate_expired");
+    pr = ghJson(`repos/${config.repository}/pulls/${prNumber}`, work);
+    assertRepairPullRequest(pr, { head, base });
+    const merged = JSON.parse(gh(["api", `repos/${config.repository}/pulls/${prNumber}/merge`, "--method", "PUT",
+      "-f", "merge_method=squash", "-f", `sha=${head}`, "-f", `commit_title=fix(recommendations): recover ${id.toUpperCase()} catalog`], work));
+    assert.equal(merged.merged, true, "repair_merge_failed");
+    sha = merged.sha;
+  }
   assert.match(sha, /^[a-f0-9]{40}$/);
   git(work, "fetch", "--no-tags", "origin", "main");
   assert.equal(git(work, "rev-parse", "origin/main"), sha, "repair_merge_not_on_main");
@@ -253,4 +273,29 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   return { status: "recovered", sha, workspace: work, prUrl, proof };
 }
 
-export { assertProtectedContracts, assertBoundedDiff, candidatePaths, publicationPlan, repairEnvironment, runEngineAutoRepair, validatedPullRequest };
+export async function resumeEngineAutoRepair({ id, config, site, baseDir, saved, assertRepository, onMerged, verifyProduction }) {
+  const work = await realpath(saved.workspace);
+  assert.ok(work.startsWith(`${await realpath(baseDir)}/attempt-`), "untrusted_repair_workspace");
+  assertRepository(work, config.repository);
+  assert.match(saved.head, /^[a-f0-9]{40}$/);
+  assert.match(saved.base, /^[a-f0-9]{40}$/);
+  assert.ok(Number.isSafeInteger(saved.prNumber) && saved.prNumber > 0, "invalid_saved_repair_pr");
+  assert.equal(saved.prUrl, `https://github.com/${config.repository}/pull/${saved.prNumber}`, "invalid_saved_repair_pr");
+  const pr = ghJson(`repos/${config.repository}/pulls/${saved.prNumber}`, work);
+  assertRepairPullRequest(pr, { head: saved.head, base: saved.base, allowMerged: true });
+  const checkoutHead = git(work, "rev-parse", "HEAD");
+  assert.ok(checkoutHead === saved.head || (pr.merged && checkoutHead === pr.merge_commit_sha), "repair_workspace_head_changed");
+  assert.equal(git(work, "rev-parse", `${saved.head}^`), saved.base, "repair_workspace_base_changed");
+  assert.equal(git(work, "status", "--porcelain=v1", "--untracked-files=all"), "", "dirty_repair_checkout");
+  const dataPaths = candidatePaths(config, site);
+  const changed = git(work, "diff", "--name-only", saved.base, saved.head).split("\n").filter(Boolean);
+  assertRepairChanges(changed.filter(path => !dataPaths.includes(path)), { site: id });
+  await assertRegularFiles(work, [...changed, ...dataPaths]);
+  const regression = REGRESSION_TEST[id];
+  assertProtectedContracts(git(work, "show", `${saved.base}:${regression}`), await readFile(join(work, regression), "utf8"),
+    JSON.parse(git(work, "show", `${saved.base}:${CALIBRATION}`)), JSON.parse(await readFile(join(work, CALIBRATION), "utf8")));
+  return finishEngineRepair({ id, config, site, work, base: saved.base, head: saved.head,
+    prUrl: saved.prUrl, prNumber: saved.prNumber, onMerged, verifyProduction });
+}
+
+export { assertRepairPullRequest, assertProtectedContracts, assertBoundedDiff, candidatePaths, publicationPlan, repairEnvironment, runEngineAutoRepair, validatedPullRequest };

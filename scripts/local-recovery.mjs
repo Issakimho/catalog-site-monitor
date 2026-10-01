@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { sites } from "../config/sites.mjs";
 import { fetchBytes, inspectSnapshot, checkSite, browserEnvironment, browserLaunchOptions } from "./check.mjs";
 import { mayAttemptRepair, parseEngineFailure, repairFingerprint, REPAIR_POLICY_VERSION } from "./engine-repair-policy.mjs";
-import { runEngineAutoRepair } from "./engine-auto-repair.mjs";
+import { runEngineAutoRepair, resumeEngineAutoRepair } from "./engine-auto-repair.mjs";
 import { repairSandboxArgs } from "./repair-sandbox.mjs";
 
 const HOUR = 3_600_000;
@@ -23,6 +23,7 @@ const gh = path => JSON.parse(execFileSync("gh", ["api", path], { encoding: "utf
 
 export function decideRecovery(health, state = {}, now = Date.now()) {
   if (state.pendingSha) return "verify_pending";
+  if (state.engineRepair?.status === "pr_checks" && state.engineRepair.prNumber && state.engineRepair.workspace) return "resume_engine_pr";
   const attempts = (state.attempts ?? []).filter(t => now - t < 24 * HOUR);
   if (health.status === "healthy" && health.ageHours < 12) return "healthy";
   if (attempts.length >= 2) return "retry_limit";
@@ -203,7 +204,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       if (sourceBase !== remoteBase && state.codeRevisionResumeSha !== remoteBase) codeRevisionResumeSha = remoteBase;
     } catch { /* Normal retry limits remain in force if the revision cannot be verified. */ }
   }
-  if (!state.pendingSha && canResumeCandidate(state, Date.now(), { newCodeRevision: Boolean(codeRevisionResumeSha), newRepairPolicy })) {
+  if (decision !== "resume_engine_pr" && !state.pendingSha && canResumeCandidate(state, Date.now(), { newCodeRevision: Boolean(codeRevisionResumeSha), newRepairPolicy })) {
     try {
       const source = await realpath(savedSource);
       assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
@@ -264,6 +265,19 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
         await save(statePath, state);
         throw new Error("ci_failed");
       }
+    }
+    if (decision === "resume_engine_pr") {
+      step = "engine_repair";
+      const repair = await resumeEngineAutoRepair({ id, config, site, baseDir, saved: state.engineRepair,
+        assertRepository, verifyProduction,
+        onMerged: async ({ sha, workspace, prUrl }) => {
+          state.pendingSha = sha; state.pendingWorkspace = workspace; state.lastWorkspace = workspace;
+          state.engineRepair = { ...state.engineRepair, status: "pending_production", sha, prUrl };
+          await save(statePath, state);
+        }
+      });
+      state.engineRepair = { ...state.engineRepair, status: "recovered", sha: repair.sha };
+      // The common exact-SHA production check records success below.
     }
     if (["refresh", "resume_candidate"].includes(decision)) {
       if (decision === "resume_candidate") {
@@ -368,8 +382,8 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
                 id, report, config, site, baseDir, source: state.lastWorkspace,
                 assertRepository, verifyCandidateBrowser, verifyProduction,
                 runCommand: ({ cwd, program, args, logPath, env, timeout }) => command(cwd, program, args, logPath, env, timeout, lockPath),
-                onPullRequest: async ({ prUrl, head, workspace }) => {
-                  state.engineRepair = { ...state.engineRepair, status: "pr_checks", prUrl, head };
+                onPullRequest: async ({ prUrl, prNumber, head, workspace }) => {
+                  state.engineRepair = { ...state.engineRepair, status: "pr_checks", prUrl, prNumber, head, workspace };
                   state.lastWorkspace = workspace;
                   await save(statePath, state);
                 },
@@ -389,7 +403,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
               return { site: id, decision: "recovered", repair: { invariant: report.invariant, prUrl: repair.prUrl }, ...repair.proof };
             } catch (repairError) {
               const code = /^[a-z_]+$/.test(repairError.message) ? repairError.message : "validation_failed";
-              state.engineRepair = { ...state.engineRepair, status: state.pendingSha ? "pending_production" : "needs_attention", code };
+              state.engineRepair = { ...state.engineRepair, status: state.pendingSha ? "pending_production" : code === "repair_ci_timeout" ? "pr_checks" : "needs_attention", code };
               step = "engine_repair";
             }
           }
@@ -397,6 +411,9 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       } catch { /* Preserve the original publication failure if diagnosis itself fails. */ }
     }
     state.lastFailure = { at: new Date().toISOString(), step, code: /^[a-z_]+$/.test(error.message) ? error.message : "validation_failed" };
+    if (decision === "resume_engine_pr" && step === "engine_repair") {
+      state.engineRepair = { ...state.engineRepair, status: state.pendingSha ? "pending_production" : error.message === "repair_ci_timeout" ? "pr_checks" : "needs_attention", code: state.lastFailure.code };
+    }
     if (step === "engine_repair") state.lastFailure.code = state.engineRepair?.code ?? "validation_failed";
     await save(statePath, state);
     return { site: id, decision: "failed", ...state.lastFailure, workspace: state.lastWorkspace, statePath };
