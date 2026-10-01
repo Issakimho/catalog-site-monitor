@@ -80,7 +80,7 @@ export function collectionEnvironment(env, creds, credentialsPath, complete = fa
     GIT_TERMINAL_PROMPT: "0", ...(complete ? { AMAZON_QUERY_BATCH_SIZE: "0" } : {}) };
 }
 
-async function command(cwd, executable, args, logPath, env = process.env, timeout = 1_200_000, lockPath) {
+export async function command(cwd, executable, args, logPath, env = process.env, timeout = 1_200_000, lockPath) {
   const log = await open(logPath, "a", 0o600);
   return new Promise((done, fail) => {
     const child = spawn(executable, args, { cwd, env, stdio: ["ignore", log.fd, log.fd], detached: true });
