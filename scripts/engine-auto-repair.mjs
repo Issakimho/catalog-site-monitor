@@ -28,7 +28,11 @@ function repairEnvironment(env) {
   return { ...Object.fromEntries(allowed.filter(key => env[key]).map(key => [key, env[key]])), GIT_TERMINAL_PROMPT: "0" };
 }
 
-function candidatePaths(config, site) {
+function candidatePaths(config, site, kind = "collection") {
+  if (kind === "enrichment") return ["config/product-enrichment-codex.json", "exports/catalog-review/pending.json",
+    "exports/catalog-review/reviewed.json", "exports/catalog-review/report.json",
+    `public${site.data}catalog-current.json`, `public${site.data}catalog-manifest.json`];
+  assert.equal(kind, "collection", "unknown_candidate_kind");
   return [config.demo, `public${site.data}catalog-current.json`, `public${site.data}catalog-manifest.json`];
 }
 
@@ -143,13 +147,13 @@ async function waitForPullRequestChecks(repository, sha, work, { attempts = 80, 
   throw new Error("repair_ci_timeout");
 }
 
-async function runEngineAutoRepair({ id, report, config, site, baseDir, source, runCommand, assertRepository, onPullRequest, onMerged, verifyCandidateBrowser, verifyProduction }) {
+async function runEngineAutoRepair({ id, report, config, site, baseDir, source, kind = "collection", runCommand, assertRepository, onPullRequest, onMerged, verifyCandidateBrowser, verifyProduction }) {
   assert.ok(id === site.id && /^[a-z]{2}$/.test(id), "wrong_repair_site");
   assert.ok(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(config.repository), "wrong_repair_repository");
   const sourceRoot = await realpath(source);
   assert.ok(sourceRoot.startsWith(`${await realpath(baseDir)}/attempt-`), "untrusted_repair_candidate");
   assertRepository(sourceRoot, config.repository);
-  const dataPaths = candidatePaths(config, site);
+  const dataPaths = candidatePaths(config, site, kind);
   const sourceChanges = changedPaths(sourceRoot);
   assert.ok(sourceChanges.length > 0 && sourceChanges.every(path => dataPaths.includes(path)), "untrusted_repair_candidate_diff");
   await assertRegularFiles(sourceRoot, dataPaths);
@@ -241,17 +245,17 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   const bodyPath = `${work}.pr.md`;
   await writeFile(bodyPath, [
     `The ${id.toUpperCase()} catalog failed the blocking ${report.invariant} selector invariant.`,
-    `This patch repairs the selector, adds a regression test, and publishes the verified candidate collected by the Raspberry.`,
+    `This patch repairs the engine, adds a regression test, and publishes the verified ${kind} candidate from the Raspberry.`,
     "", "Validation: npm run verify:publication; local current and 12-hour browser journeys.",
-    "Automated scope: selector source, selector regression test, calibration digest, and the three collector-produced catalog artifacts."
+    "Automated scope: existing engine modules, appended regression assertions, protected calibration digests, and unchanged candidate artifacts."
   ].join("\n") + "\n", { mode: 0o600 });
   const prUrl = gh(["pr", "create", "--repo", config.repository, "--base", "main", "--head", branch,
     "--title", `fix(recommendations): recover ${id.toUpperCase()} catalog`, "--body-file", bodyPath], work);
   const prAddress = new URL(prUrl);
   assert.equal(prAddress.origin, "https://github.com", "repair_pr_not_confirmed");
-  const [owner, repo, kind, number, extra] = prAddress.pathname.split("/").filter(Boolean);
+  const [owner, repo, prKind, number, extra] = prAddress.pathname.split("/").filter(Boolean);
   assert.equal(`${owner}/${repo}`, config.repository, "repair_pr_not_confirmed");
-  assert.ok(kind === "pull" && /^\d+$/.test(number) && !extra && !prAddress.search && !prAddress.hash,
+  assert.ok(prKind === "pull" && /^\d+$/.test(number) && !extra && !prAddress.search && !prAddress.hash,
     "repair_pr_not_confirmed");
   const prNumber = Number(number);
   await onPullRequest({ prUrl, prNumber, head, workspace: work });
@@ -304,7 +308,7 @@ export async function resumeEngineAutoRepair({ id, config, site, baseDir, saved,
   assert.ok(checkoutHead === saved.head || (pr.merged && checkoutHead === pr.merge_commit_sha), "repair_workspace_head_changed");
   assert.equal(git(work, "rev-parse", `${saved.head}^`), saved.base, "repair_workspace_base_changed");
   assert.equal(git(work, "status", "--porcelain=v1", "--untracked-files=all"), "", "dirty_repair_checkout");
-  const dataPaths = candidatePaths(config, site);
+  const dataPaths = candidatePaths(config, site, saved.kind ?? "collection");
   const changed = git(work, "diff", "--name-only", saved.base, saved.head).split("\n").filter(Boolean);
   assertRepairChanges(changed.filter(path => !dataPaths.includes(path)), { site: id });
   await assertRegularFiles(work, [...changed, ...dataPaths]);

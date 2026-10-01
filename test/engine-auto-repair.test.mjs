@@ -70,3 +70,15 @@ test("market-specific calibration digests can be renewed without changing their 
   assert.throws(() => assertProtectedContracts('old', 'old plus', spanish, { invariantLogic: { ...spanish.invariantLogic, sourceDigest: 'c'.repeat(64) } }));
   assert.throws(() => assertProtectedContracts('old', 'old plus', runtime, { ...runtime, runtimeVerification: { files: ['engine.mjs'], baseRevision: 'old' } }));
 });
+
+
+test("enrichment repair freezes only the six review artifacts and rejects unknown sources", () => {
+  for (const data of ["/data/", "/data/de-DE/"]) {
+    assert.deepEqual(candidatePaths({ demo: "demo/amazon-products.mjs" }, { data }, "enrichment"), [
+      "config/product-enrichment-codex.json", "exports/catalog-review/pending.json",
+      "exports/catalog-review/reviewed.json", "exports/catalog-review/report.json",
+      `public${data}catalog-current.json`, `public${data}catalog-manifest.json`
+    ]);
+  }
+  assert.throws(() => candidatePaths({}, {}, "other"), /unknown_candidate_kind/);
+});

@@ -240,9 +240,18 @@ and validates the snapshot, then checks the live deployment as usual. Two resume
 attempts per day and a 30-minute cooldown bound validation retries separately.
 Expired data is never redated or used to bypass a failing publication gate.
 
-On the Raspberry, collector and incident-recovery services retain
+On the Raspberry, collector, enrichment and incident-recovery services retain
 `NoNewPrivileges=true` and use `PrivateTmp=false`. Bubblewrap and Codex create
 their own isolated temporary filesystems; a systemd private temporary namespace
 prevents these command sandboxes from creating nested namespaces on this host.
 Validate sandbox startup through the actual systemd service configuration, not
 only through an interactive SSH shell.
+
+
+The serialized private enrichment controller also hands failed publication gates
+to `scripts/repair-enrichment-candidate.mjs`. This route accepts only recognized
+engine assertions. It freezes the enrichment decisions, review reports and both
+catalog files, then applies the same regression, CI and production checks as a
+collection repair. Other failures remain visible without granting code writes.
+A persisted PR or merged deployment is resumed before reviewing another batch;
+repeated attempts for the same engine failure have a 24-hour cooldown.
