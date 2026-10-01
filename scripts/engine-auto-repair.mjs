@@ -71,10 +71,27 @@ async function assertRegularFiles(root, paths) {
 
 function assertProtectedContracts(beforeTest, afterTest, beforeCalibration, afterCalibration) {
   assert.ok(afterTest.startsWith(beforeTest) && afterTest.length > beforeTest.length, "existing_regression_tests_changed");
-  const protectedFields = value => Object.fromEntries(Object.entries(value)
-    .filter(([key]) => !["sha256", "updatedAt", "note"].includes(key)));
+  const protectedFields = value => {
+    const copy = structuredClone(value);
+    for (const key of ["sha256", "updatedAt", "note"]) delete copy[key];
+    if (copy.runtimeVerification) {
+      delete copy.runtimeVerification.sha256;
+      delete copy.runtimeVerification.updatedAt;
+    }
+    if (copy.invariantLogic) delete copy.invariantLogic.targetDigest;
+    return copy;
+  };
   assert.deepEqual(protectedFields(afterCalibration), protectedFields(beforeCalibration), "calibration_contract_changed");
-  assert.match(afterCalibration.sha256, /^[a-f0-9]{64}$/);
+  const digests = [afterCalibration.sha256, afterCalibration.runtimeVerification?.sha256, afterCalibration.invariantLogic?.targetDigest]
+    .filter(value => value !== undefined);
+  assert.ok(digests.length > 0, "missing_calibration_digest");
+  for (const digest of digests) assert.match(digest, /^[a-f0-9]{64}$/);
+  for (const [before, after] of [[beforeCalibration, afterCalibration],
+    [beforeCalibration.runtimeVerification, afterCalibration.runtimeVerification],
+    [beforeCalibration.invariantLogic, afterCalibration.invariantLogic]]) {
+    if (before?.sha256 !== undefined) assert.ok(after?.sha256 !== undefined, "calibration_digest_removed");
+    if (before?.targetDigest !== undefined) assert.ok(after?.targetDigest !== undefined, "calibration_digest_removed");
+  }
 }
 
 function assertRepairPullRequest(pr, { head, base, allowMerged = false }) {

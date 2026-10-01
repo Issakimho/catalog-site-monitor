@@ -58,3 +58,15 @@ test("resuming a repair never accepts a replaced head, advanced base or an unmer
   assert.equal(assertRepairPullRequest(merged, { ...expected, allowMerged: true }), 'verify_merged');
   assert.throws(() => assertRepairPullRequest(merged, expected));
 });
+
+
+test("market-specific calibration digests can be renewed without changing their protected provenance", () => {
+  const runtime = { sha256: 'a'.repeat(64), runtimeVerification: { baseRevision: 'old', sha256: 'b'.repeat(64), files: ['engine.mjs'] } };
+  const revised = { ...runtime, runtimeVerification: { ...runtime.runtimeVerification, sha256: 'c'.repeat(64), updatedAt: '2026-10-01' } };
+  assertProtectedContracts('old', 'old plus regression', runtime, revised);
+  assert.throws(() => assertProtectedContracts('old', 'old plus', runtime, { ...revised, runtimeVerification: { ...revised.runtimeVerification, files: [] } }));
+  const spanish = { invariantLogic: { sourceDigest: 'a'.repeat(64), targetDigest: 'b'.repeat(64), files: ['engine.mjs'] } };
+  assertProtectedContracts('old', 'old plus', spanish, { invariantLogic: { ...spanish.invariantLogic, targetDigest: 'c'.repeat(64) } });
+  assert.throws(() => assertProtectedContracts('old', 'old plus', spanish, { invariantLogic: { ...spanish.invariantLogic, sourceDigest: 'c'.repeat(64) } }));
+  assert.throws(() => assertProtectedContracts('old', 'old plus', runtime, { ...runtime, runtimeVerification: { files: ['engine.mjs'], baseRevision: 'old' } }));
+});
