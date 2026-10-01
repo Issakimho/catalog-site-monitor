@@ -92,7 +92,7 @@ function repairPrompt({ site, report }) {
     `${REGRESSION_TEST[site]}, and config/engine-calibration.json.`,
     "APPEND a deterministic regression test at the END of the existing regression script. Preserve every existing byte of that script.",
     "The new assertion must fail on the old engine and pass on the fix. Use synthetic fixtures, not a dependency on current supplier IDs.",
-    "In config/engine-calibration.json only sha256, updatedAt and note may change. Preserve digestCommand, source provenance and all other fields.",
+    "In config/engine-calibration.json only sha256, updatedAt, note, runtimeVerification.sha256/updatedAt and invariantLogic.targetDigest may change. Preserve digest commands, file lists, algorithms and source provenance.",
     "Do not alter supplier data, generated catalog files, audit invariants, CI, package files, or credentials.",
     "Do not run Git push, create a PR, merge, or change repository settings. The controller handles publication.",
     "Run the selector test. The controller runs the full publication gate. Stop if the fix needs a file outside the allowed scope.",
