@@ -105,14 +105,19 @@ commit, byte-identical public catalog files and healthy browser journeys.
 The public monitor then closes the incident after its own checks. Revoked provider
 access and an unavailable Raspberry still require intervention.
 
-If the full publication corpus fails only the known
-`primary_is_not_strictly_dominated` selector invariant, the Raspberry makes one
-code-repair attempt per failing base revision in 24 hours. A Codex CLI session
+A selector/data-contract invariant or a behavioral failure in a recognized
+engine test (metamorphic, selector, scoring, project profile, pipeline or
+adversarial) starts one repair attempt per base revision and test family in
+24 hours. Market, supplier, dependency, calibration and infrastructure failures
+do not enter this repair path. The controller first reproduces the failure
+with the exact rejected candidate in a disposable checkout. A Codex CLI session
 uses the existing ChatGPT subscription in a disposable checkout. Codex's command
 permissions deny access to machine files outside the checkout, including its own
 login, supplier and GitHub credentials, and deny network access. The controller
-accepts changes only to existing recommendation selector modules, the selector
-regression test and the calibration digest. The collector's
+accepts changes only to existing engine selection, scoring, domain and
+application modules, appended regression assertions and the calibration digest.
+Existing test bytes, calibration commands and source provenance are protected.
+The added regression must fail with the old engine and pass with the repair. The collector's
 three catalog artifacts are copied from the original failed candidate unchanged.
 Build and publication tests run without network access and with pinned
 dependencies reinstalled after the coding session. The fixed npm vulnerability
@@ -124,8 +129,10 @@ CI and every commit check succeed, provided main has not advanced and the
 candidate is still fresh. Success still requires deployment of the merged SHA,
 byte-identical live catalog files and healthy current and twelve-hour browser
 journeys. A failed code repair leaves its pull request and private logs for
-inspection and reports an incident. Other invariants and code changes outside
-this narrow scope require intervention.
+inspection and reports an incident. Changes outside this engine scope require
+intervention. Installing a newer repair policy permits one revalidation of a
+recognized, still-fresh rejected candidate, independently of supplier budgets;
+it neither renews offer dates nor grants more supplier calls.
 
 Private machine configuration lives outside this repository, in
 `$HOME/.codex/catalog-autonomy/sites.json`. It specifies each exact project root,

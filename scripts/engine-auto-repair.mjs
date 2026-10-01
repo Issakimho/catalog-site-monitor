@@ -9,6 +9,7 @@ import { inspectSnapshot } from "./check.mjs";
 import { repairCodexConfig, repairSandboxArgs } from "./repair-sandbox.mjs";
 import {
   assertRepairChanges,
+  CALIBRATION, REGRESSION_TEST, SELECTOR_SOURCE, parseEngineFailure,
   repairPrompt
 } from "./engine-repair-policy.mjs";
 
@@ -66,6 +67,14 @@ function assertPatch(work, expectedDataPaths, site) {
 
 async function assertRegularFiles(root, paths) {
   for (const path of paths) assert.ok((await lstat(join(root, path))).isFile(), "non_regular_repair_file");
+}
+
+function assertProtectedContracts(beforeTest, afterTest, beforeCalibration, afterCalibration) {
+  assert.ok(afterTest.startsWith(beforeTest) && afterTest.length > beforeTest.length, "existing_regression_tests_changed");
+  const protectedFields = value => Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !["sha256", "updatedAt", "note"].includes(key)));
+  assert.deepEqual(protectedFields(afterCalibration), protectedFields(beforeCalibration), "calibration_contract_changed");
+  assert.match(afterCalibration.sha256, /^[a-f0-9]{64}$/);
 }
 
 function validatedPullRequest(checks, runs) {
@@ -131,6 +140,20 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   for (const file of dataPaths) await copyFile(join(sourceRoot, file), join(work, file));
   const originalCandidateHash = await hashFiles(work, dataPaths);
   await run(work, "npm", ["ci", "--ignore-scripts"]);
+  const plan = publicationPlan(JSON.parse(await readFile(join(work, "package.json"), "utf8")));
+  const reproductionLog = `${work}.reproduction.log`;
+  let reproduced = false;
+  try {
+    await runCommand({ cwd: work, program: "bwrap", args: [...repairSandboxArgs(work), "sh", "-c", plan.offline],
+      logPath: reproductionLog, env: environment, timeout: 1_200_000 });
+  } catch {
+    const actual = parseEngineFailure(await readFile(reproductionLog, "utf8"));
+    reproduced = actual?.category === report.category && actual?.invariant === report.invariant;
+  }
+  assert.ok(reproduced, "engine_failure_not_reproduced_with_candidate");
+  const regression = REGRESSION_TEST[id];
+  const originalTest = await readFile(join(work, regression), "utf8");
+  const originalCalibration = JSON.parse(await readFile(join(work, CALIBRATION), "utf8"));
   await run(work, "codex", [
     "--ask-for-approval", "never", "exec", "--ephemeral", "--ignore-user-config",
     ...repairCodexConfig(dataPaths), "-C", work,
@@ -141,21 +164,43 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   assert.equal(await hashFiles(work, dataPaths), originalCandidateHash, "agent_changed_catalog_data");
   const { codePaths } = assertPatch(work, dataPaths, id);
   await assertRegularFiles(work, [...dataPaths, ...codePaths]);
+  assertProtectedContracts(originalTest, await readFile(join(work, regression), "utf8"),
+    originalCalibration, JSON.parse(await readFile(join(work, CALIBRATION), "utf8")));
+  const codeHash = await hashFiles(work, codePaths);
   for (const path of codePaths) git(work, "ls-files", "--error-unmatch", "--", path);
   // Discard ignored build output from the coding session and reinstall the
   // pinned dependencies before executing any generated patch.
   git(work, "clean", "-fdX");
   await run(work, "npm", ["ci", "--ignore-scripts"]);
   await run(work, "bwrap", [...repairSandboxArgs(work), "npm", "run", config.build]);
-  const plan = publicationPlan(JSON.parse(await readFile(join(work, "package.json"), "utf8")));
   await run(work, "bwrap", [...repairSandboxArgs(work), "sh", "-c", plan.offline]);
   await run(work, "npm", plan.audit);
+  // Prove the added test detects the old behavior; retain the repaired bytes.
+  const enginePaths = codePaths.filter(path => SELECTOR_SOURCE.test(path));
+  const repaired = new Map(await Promise.all(enginePaths.map(async path => [path, await readFile(join(work, path))])));
+  const regressionLog = `${work}.regression-before.log`;
+  let regressionFailed = false;
+  try {
+    for (const path of enginePaths) await writeFile(join(work, path), execFileSync("git", ["show", `${base}:${path}`], { cwd: work }));
+    try {
+      await runCommand({ cwd: work, program: "bwrap", args: [...repairSandboxArgs(work), "node", regression],
+        logPath: regressionLog, env: environment, timeout: 1_200_000 });
+    } catch {
+      regressionFailed = /AssertionError \[ERR_ASSERTION\]|^FAIL\s/m.test(await readFile(regressionLog, "utf8"));
+    }
+  } finally {
+    for (const [path, bytes] of repaired) await writeFile(join(work, path), bytes);
+  }
+  assert.ok(regressionFailed, "regression_does_not_detect_old_engine");
+  await run(work, "bwrap", [...repairSandboxArgs(work), "node", regression]);
   const snapshot = await readFile(join(work, `public${site.data}catalog-current.json`));
   const manifest = await readFile(join(work, `public${site.data}catalog-manifest.json`));
   assert.equal(inspectSnapshot(snapshot, manifest, site).status, "healthy", "repair_candidate_not_fresh");
   await verifyCandidateBrowser(work, site, { sandboxedPreview: true });
   const finalPatch = assertPatch(work, dataPaths, id);
   assert.deepEqual(finalPatch.codePaths, codePaths, "repair_code_changed_during_validation");
+  assert.equal(await hashFiles(work, codePaths), codeHash, "repair_code_changed_during_validation");
+  assert.equal(await hashFiles(work, dataPaths), originalCandidateHash, "repair_data_changed_during_validation");
   await assertRegularFiles(work, [...dataPaths, ...codePaths]);
   git(work, "fetch", "--no-tags", "origin", "main");
   assert.equal(git(work, "rev-parse", "origin/main"), base, "repair_base_advanced");
@@ -192,7 +237,7 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   assert.equal(pr.head.sha, head, "repair_pr_head_changed");
   assert.equal(pr.base.sha, base, "repair_pr_base_changed");
   const merged = JSON.parse(gh(["api", `repos/${config.repository}/pulls/${prNumber}/merge`, "--method", "PUT",
-    "-f", "merge_method=squash", "-f", `commit_title=fix(recommendations): recover ${id.toUpperCase()} catalog`], work));
+    "-f", "merge_method=squash", "-f", `sha=${head}`, "-f", `commit_title=fix(recommendations): recover ${id.toUpperCase()} catalog`], work));
   assert.equal(merged.merged, true, "repair_merge_failed");
   const sha = merged.sha;
   assert.match(sha, /^[a-f0-9]{40}$/);
@@ -208,4 +253,4 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   return { status: "recovered", sha, workspace: work, prUrl, proof };
 }
 
-export { assertBoundedDiff, candidatePaths, publicationPlan, repairEnvironment, runEngineAutoRepair, validatedPullRequest };
+export { assertProtectedContracts, assertBoundedDiff, candidatePaths, publicationPlan, repairEnvironment, runEngineAutoRepair, validatedPullRequest };
