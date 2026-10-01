@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { candidatePaths, publicationPlan, repairEnvironment, validatedPullRequest } from "../scripts/engine-auto-repair.mjs";
+import { assertProtectedContracts, candidatePaths, publicationPlan, repairEnvironment, validatedPullRequest } from "../scripts/engine-auto-repair.mjs";
 
 test("the coding process does not inherit supplier or GitHub credentials", () => {
   const env = repairEnvironment({ PATH: "/bin", HOME: "/home/imho", CODEX_HOME: "/home/imho/.codex", LANG: "en_US.UTF-8",
@@ -34,4 +34,14 @@ test("publication tests stay offline while the fixed dependency audit runs separ
   assert.equal(de.offline, "npm run quality");
   assert.deepEqual(de.audit, ["audit", "--audit-level=high"]);
   assert.throws(() => publicationPlan({ scripts: { "verify:publication": "npm test && curl https://example.com" } }));
+});
+
+
+test("repairs append regression coverage and cannot weaken tests or replace the digest command", () => {
+  const before = { sha256: "a".repeat(64), digestCommand: "trusted command", scope: "engine", sourceRevision: "base" };
+  assertProtectedContracts("old test\n", "old test\nnew assertion\n", before, { ...before, sha256: "b".repeat(64), note: "fix" });
+  assert.throws(() => assertProtectedContracts("old test\n", "weaker test\n", before, before));
+  assert.throws(() => assertProtectedContracts("old test\n", "old test\n", before, before));
+  assert.throws(() => assertProtectedContracts("test", "test plus", before, { ...before, digestCommand: "untrusted" }));
+  assert.throws(() => assertProtectedContracts("test", "test plus", before, { ...before, sourceRevision: "fake" }));
 });

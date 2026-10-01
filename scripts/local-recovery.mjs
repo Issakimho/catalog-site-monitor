@@ -9,7 +9,7 @@ import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 import { sites } from "../config/sites.mjs";
 import { fetchBytes, inspectSnapshot, checkSite, browserEnvironment, browserLaunchOptions } from "./check.mjs";
-import { mayAttemptRepair, parseEngineFailure, repairFingerprint } from "./engine-repair-policy.mjs";
+import { mayAttemptRepair, parseEngineFailure, repairFingerprint, REPAIR_POLICY_VERSION } from "./engine-repair-policy.mjs";
 import { runEngineAutoRepair } from "./engine-auto-repair.mjs";
 import { repairSandboxArgs } from "./repair-sandbox.mjs";
 
@@ -30,11 +30,11 @@ export function decideRecovery(health, state = {}, now = Date.now()) {
   return "refresh";
 }
 
-export function canResumeCandidate(state, now = Date.now(), { newCodeRevision = false } = {}) {
+export function canResumeCandidate(state, now = Date.now(), { newCodeRevision = false, newRepairPolicy = false } = {}) {
   if (state.pendingSha || !state.lastWorkspace || !state.lastFailure) return false;
-  if (state.lastFailure.step === "engine_repair") return newCodeRevision;
+  if (state.lastFailure.step === "engine_repair") return newCodeRevision || newRepairPolicy;
   if (!/^(run (build[:a-z-]*|verify:publication)|candidate_integrity|candidate_browser)$/.test(state.lastFailure.step ?? "")) return false;
-  if (newCodeRevision) return true;
+  if (newCodeRevision || newRepairPolicy) return true;
   const attempts = (state.resumeAttempts ?? []).filter(t => now - t < 24 * HOUR);
   return attempts.length < 2 && !attempts.some(t => now - t < 30 * 60_000);
 }
@@ -184,6 +184,14 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
   // A resume never manufactures dates or bypasses publication/market checks.
   let resumeSource = null;
   let codeRevisionResumeSha = null;
+  let newRepairPolicy = false;
+  if (["run verify:publication", "engine_repair"].includes(state.lastFailure?.step) &&
+      state.repairPolicyResumeVersion !== REPAIR_POLICY_VERSION) {
+    try {
+      const source = state.lastFailure?.step === "engine_repair" ? state.engineRepair?.source : state.lastWorkspace;
+      newRepairPolicy = Boolean(parseEngineFailure(await readFile(`${source}.log`, "utf8")));
+    } catch { /* No diagnostic means no extra retry. */ }
+  }
   const savedSource = state.lastFailure?.step === "engine_repair" ? state.engineRepair?.source : state.lastWorkspace;
   if (!state.pendingSha && ["run verify:publication", "engine_repair"].includes(state.lastFailure?.step) && savedSource) {
     try {
@@ -195,7 +203,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       if (sourceBase !== remoteBase && state.codeRevisionResumeSha !== remoteBase) codeRevisionResumeSha = remoteBase;
     } catch { /* Normal retry limits remain in force if the revision cannot be verified. */ }
   }
-  if (!state.pendingSha && canResumeCandidate(state, Date.now(), { newCodeRevision: Boolean(codeRevisionResumeSha) })) {
+  if (!state.pendingSha && canResumeCandidate(state, Date.now(), { newCodeRevision: Boolean(codeRevisionResumeSha), newRepairPolicy })) {
     try {
       const source = await realpath(savedSource);
       assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
@@ -261,6 +269,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       if (decision === "resume_candidate") {
         state.resumeAttempts = [...(state.resumeAttempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
         if (codeRevisionResumeSha) state.codeRevisionResumeSha = codeRevisionResumeSha;
+        if (newRepairPolicy) state.repairPolicyResumeVersion = REPAIR_POLICY_VERSION;
       }
       else state.attempts = [...(state.attempts ?? []).filter(t => Date.now() - t < 24 * HOUR), Date.now()];
       await save(statePath, state);

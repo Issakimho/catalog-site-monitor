@@ -66,3 +66,13 @@ test("fresh candidates can resume after validation errors without bypassing coll
   assert.equal(canResumeCandidate({...state,lastFailure:{step:'engine_repair'}},now),false);
   assert.deepEqual(state.attempts,[now-H,now-3*H]);
 });
+
+
+test("a newly deployed repair policy replays the rejected candidate once without supplier calls", async () => {
+  const { canResumeCandidate } = await import('../scripts/local-recovery.mjs');
+  const state = { lastWorkspace: '/private/attempt-1', lastFailure: { step: 'run verify:publication' }, resumeAttempts: [now-H, now-2*H] };
+  assert.equal(canResumeCandidate(state, now), false);
+  assert.equal(canResumeCandidate(state, now, { newRepairPolicy: true }), true);
+  assert.equal(canResumeCandidate({ ...state, lastFailure: { step: 'engine_repair' } }, now, { newRepairPolicy: true }), true);
+  assert.equal(canResumeCandidate({ ...state, lastFailure: { step: 'run fetch:amazon-catalog' } }, now, { newRepairPolicy: true }), false);
+});
