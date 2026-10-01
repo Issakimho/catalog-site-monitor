@@ -76,3 +76,12 @@ test("a newly deployed repair policy replays the rejected candidate once without
   assert.equal(canResumeCandidate({ ...state, lastFailure: { step: 'engine_repair' } }, now, { newRepairPolicy: true }), true);
   assert.equal(canResumeCandidate({ ...state, lastFailure: { step: 'run fetch:amazon-catalog' } }, now, { newRepairPolicy: true }), false);
 });
+
+
+test("a checked repair PR resumes independently of supplier budgets and public catalog age", () => {
+  const state = { attempts: [now-H, now-3*H], engineRepair: { status: 'pr_checks', prNumber: 5, workspace: '/private/attempt-1-engine' } };
+  assert.equal(decideRecovery({ status: 'critical' }, state, now), 'resume_engine_pr');
+  assert.equal(decideRecovery({ status: 'healthy', ageHours: 2 }, state, now), 'resume_engine_pr');
+  assert.equal(decideRecovery({ status: 'critical' }, { ...state, pendingSha: 'merged' }, now), 'verify_pending');
+  assert.equal(decideRecovery({ status: 'critical' }, { ...state, engineRepair: { ...state.engineRepair, status: 'needs_attention' } }, now), 'retry_limit');
+});

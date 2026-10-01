@@ -129,7 +129,10 @@ CI and every commit check succeed, provided main has not advanced and the
 candidate is still fresh. Success still requires deployment of the merged SHA,
 byte-identical live catalog files and healthy current and twelve-hour browser
 journeys. A failed code repair leaves its pull request and private logs for
-inspection and reports an incident. Changes outside this engine scope require
+inspection and reports an incident. A pull-request CI timeout resumes that same
+PR and immutable commit on the next check without another model or supplier
+call; a merge completed before a service restart is confirmed from GitHub.
+Changes outside this engine scope require
 intervention. Installing a newer repair policy permits one revalidation of a
 recognized, still-fresh rejected candidate, independently of supplier budgets;
 it neither renews offer dates nor grants more supplier calls.
