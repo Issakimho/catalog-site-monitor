@@ -236,3 +236,10 @@ Only the original demo data is copied into a new checkout: the current code rebu
 and validates the snapshot, then checks the live deployment as usual. Two resume
 attempts per day and a 30-minute cooldown bound validation retries separately.
 Expired data is never redated or used to bypass a failing publication gate.
+
+On the Raspberry, collector and incident-recovery services retain
+`NoNewPrivileges=true` and use `PrivateTmp=false`. Bubblewrap and Codex create
+their own isolated temporary filesystems; a systemd private temporary namespace
+prevents these command sandboxes from creating nested namespaces on this host.
+Validate sandbox startup through the actual systemd service configuration, not
+only through an interactive SSH shell.

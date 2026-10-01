@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 // The collector may recover an engine regression, but it must not turn a
 // supplier, build, market, or infrastructure failure into a code change.
-const REPAIR_POLICY_VERSION = "candidate-engine-v2";
+const REPAIR_POLICY_VERSION = "candidate-engine-v3";
 const ENGINE_TESTS = new Set([
   "test-recommendation-metamorphic.mjs", "test-recommendation-selector.mjs",
   "test-recommendation-pipeline.mjs", "test-recommendation-adversarial-corpus.mjs",
