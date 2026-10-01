@@ -13,6 +13,19 @@ import { mayAttemptRepair, parseEngineFailure, repairFingerprint, REPAIR_POLICY_
 import { runEngineAutoRepair, resumeEngineAutoRepair } from "./engine-auto-repair.mjs";
 import { repairSandboxArgs } from "./repair-sandbox.mjs";
 
+import { observeCollection, recordWorkflowFailure, recordVerifiedWorkflow, sourceHealthSummary } from "./source-health.mjs";
+
+async function observeWork(state, work, config, id, verifiedSha) {
+  const reportPath = join(work, "exports/audits/amazon-collection-health.json");
+  let report;
+  if (await exists(reportPath)) report = await json(reportPath);
+  else {
+    const demo = await import(pathToFileURL(join(work, config.demo)).href);
+    report = demo.amazonDemoProductStats?.collectionHealth;
+  }
+  return report ? observeCollection(state, report, id, { verifiedSha }) : state;
+}
+
 const HOUR = 3_600_000;
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const json = async path => JSON.parse(await readFile(path, "utf8"));
@@ -25,7 +38,7 @@ export function decideRecovery(health, state = {}, now = Date.now()) {
   if (state.pendingSha) return "verify_pending";
   if (state.engineRepair?.status === "pr_checks" && state.engineRepair.prNumber && state.engineRepair.workspace) return "resume_engine_pr";
   const attempts = (state.attempts ?? []).filter(t => now - t < 24 * HOUR);
-  if (health.status === "healthy" && health.ageHours < 12) return "healthy";
+  if (health.status === "healthy" && health.ageHours < 12 && !state.lastFailure && !sourceHealthSummary(state, now).unresolvedQueries && !sourceHealthSummary(state, now).workflowFailure) return "healthy";
   if (attempts.length >= 2) return "retry_limit";
   if (attempts.some(t => now - t < 2 * HOUR)) return "cooldown";
   return "refresh";
@@ -149,7 +162,7 @@ export async function recordVerifiedRecovery(id, sha, work) {
   const proof = await verifyProduction(config, site, sha, work);
   const statePath = join(baseDir, "state.json");
   const state = await exists(statePath) ? await json(statePath) : {};
-  await save(statePath, { ...state, pendingSha: null, pendingWorkspace: null, lastFailure: null, lastSuccess: new Date().toISOString(), proof });
+  await save(statePath, recordVerifiedWorkflow(await observeWork(state, work, config, id, sha), proof));
   return proof;
 }
 
@@ -218,7 +231,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
     } catch { /* Unusable candidates remain archived; normal collection rules apply. */ }
   }
   if (force && !state.pendingSha) decision = "refresh"; // Manual recovery only; the saved automation never sets this flag.
-  if (!apply || ["healthy", "cooldown", "retry_limit"].includes(decision)) return { site: id, decision, status: health.status, codes: health.codes, statePath };
+  if (!apply || ["healthy", "cooldown", "retry_limit"].includes(decision)) return { site: id, decision, status: health.status, codes: health.codes, statePath, ...sourceHealthSummary(state) };
 
   const lockPath = join(baseDir, "lock.json");
   if (await exists(lockPath)) {
@@ -315,7 +328,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
         assert.equal(creds.missing.length, 0, "credentials_missing");
         assert.equal(creds.marketplace, id.toUpperCase(), "wrong_credential_market");
         assert.equal(creds.associateTag, config.tag, "wrong_affiliate_identity");
-        env = collectionEnvironment(process.env, creds, config.credentials, health.status !== "healthy");
+        env = collectionEnvironment(process.env, creds, config.credentials, health.status !== "healthy" || sourceHealthSummary(state).unresolvedQueries > 0);
       }
       const commands = [["ci", "--ignore-scripts"],
         ...(decision === "resume_candidate" ? [] : [["run", "check:amazon"], ["run", "fetch:amazon-catalog"]]),
@@ -326,7 +339,14 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
         // Only collection receives supplier credentials; validation and browser processes do not.
         const scopedEnv = args[1] === "fetch:amazon-catalog" || args[1] === "check:amazon" ? env : collectionEnvironment(process.env, {}, "");
         // Omit absent values from the non-supplier environment rather than stringifying them.
-        await command(work, "npm", args, log, Object.fromEntries(Object.entries(scopedEnv).filter(([, value]) => value != null)), 1_200_000, lockPath);
+        try {
+          await command(work, "npm", args, log, Object.fromEntries(Object.entries(scopedEnv).filter(([, value]) => value != null)), 1_200_000, lockPath);
+        } finally {
+          if (args[1] === "fetch:amazon-catalog" && await exists(join(work, "exports/audits/amazon-collection-health.json"))) {
+            state = await observeWork(state, work, config, id);
+            await save(statePath, state);
+          }
+        }
       }
       step = "candidate_integrity";
       const bytes = await readFile(join(work, `public${site.data}catalog-current.json`));
@@ -361,11 +381,11 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       try { proof = await verifyProduction(config, site, state.pendingSha, state.pendingWorkspace); break; }
       catch { if (attempt === 39) throw new Error("production_verification_failed"); await pause(15_000); }
     }
-    state = { ...state, pendingSha: null, pendingWorkspace: null, lastSuccess: new Date().toISOString(), lastFailure: null, proof };
+    state = recordVerifiedWorkflow(await observeWork(state, state.pendingWorkspace, config, id, proof.sha), proof);
     await save(statePath, state);
     // Request a fresh shared browser check. Only that checker closes the public incident.
     try { execFileSync("gh", ["workflow", "run", "monitor.yml", "--repo", "Issakimho/catalog-site-monitor"], { timeout: 30_000, stdio: "pipe" }); } catch {}
-    return { site: id, decision: "recovered", ...proof };
+    return { site: id, decision: "recovered", ...proof, ...sourceHealthSummary(state) };
   } catch (error) {
     if (step === "run verify:publication" && state.lastWorkspace && !state.pendingSha) {
       try {
@@ -395,12 +415,11 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
                   await save(statePath, state);
                 }
               });
-              state = { ...state, pendingSha: null, pendingWorkspace: null, lastFailure: null,
-                lastSuccess: new Date().toISOString(), proof: repair.proof,
-                engineRepair: { ...state.engineRepair, status: "recovered", sha: repair.sha, prUrl: repair.prUrl } };
+              state = recordVerifiedWorkflow(await observeWork(state, state.pendingWorkspace ?? state.lastWorkspace, config, id, repair.sha), repair.proof);
+              state.engineRepair = { ...state.engineRepair, status: "recovered", sha: repair.sha, prUrl: repair.prUrl };
               await save(statePath, state);
               try { execFileSync("gh", ["workflow", "run", "monitor.yml", "--repo", "Issakimho/catalog-site-monitor"], { timeout: 30_000, stdio: "pipe" }); } catch {}
-              return { site: id, decision: "recovered", repair: { invariant: report.invariant, prUrl: repair.prUrl }, ...repair.proof };
+              return { site: id, decision: "recovered", repair: { invariant: report.invariant, prUrl: repair.prUrl }, ...repair.proof, ...sourceHealthSummary(state) };
             } catch (repairError) {
               const code = /^[a-z_]+$/.test(repairError.message) ? repairError.message : "validation_failed";
               state.engineRepair = { ...state.engineRepair, status: state.pendingSha ? "pending_production" : code === "repair_ci_timeout" ? "pr_checks" : "needs_attention", code };
@@ -415,8 +434,9 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       state.engineRepair = { ...state.engineRepair, status: state.pendingSha ? "pending_production" : error.message === "repair_ci_timeout" ? "pr_checks" : "needs_attention", code: state.lastFailure.code };
     }
     if (step === "engine_repair") state.lastFailure.code = state.engineRepair?.code ?? "validation_failed";
+    state = recordWorkflowFailure(state, state.lastFailure, state.lastWorkspace ?? decision);
     await save(statePath, state);
-    return { site: id, decision: "failed", ...state.lastFailure, workspace: state.lastWorkspace, statePath };
+    return { site: id, decision: "failed", ...sourceHealthSummary(state), ...state.lastFailure, workspace: state.lastWorkspace, statePath };
   } finally {
     // Only release our own lock, preserving an audit record.
     if ((await json(lockPath)).pid === process.pid) await rename(lockPath, join(baseDir, "last-lock.json"));
@@ -427,6 +447,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const result = await recover(process.argv[2], { apply: process.argv.includes("--run"), force: process.argv.includes("--force"), probeBrowser: process.argv.includes("--probe-browser"), configPath: process.env.CATALOG_RECOVERY_CONFIG });
     console.log(JSON.stringify(result));
-    if (["failed", "retry_limit"].includes(result.decision)) process.exitCode = 1;
+    if (result.attentionRequired || ["failed", "retry_limit"].includes(result.decision)) process.exitCode = 1;
   } catch { console.error(JSON.stringify({ site: process.argv[2], decision: "failed", code: "preflight_failed" })); process.exitCode = 1; }
 }
