@@ -255,3 +255,31 @@ catalog files, then applies the same regression, CI and production checks as a
 collection repair. Other failures remain visible without granting code writes.
 A persisted PR or merged deployment is resumed before reviewing another batch;
 repeated attempts for the same engine failure have a 24-hour cooldown.
+
+### Persistent partial collection failures
+
+Variant collectors now emit a sanitized per-query health report. The Raspberry
+worker keeps incidents in its private `state.json`: first/last failure, number of
+actual collections, and a bounded event history. Replaying an attempt does not
+increment its failure count. An unobserved query stays unresolved. A successful
+query clears its incident only after the candidate passes CI, exact-SHA deployment,
+byte comparison and the live browser checks at the current time and +12 hours.
+
+A failed query requests a complete discovery pass on the next allowed recovery.
+The existing limit of two supplier collections per 24 hours and the two-hour
+cooldown still apply. Three failed collections or 36 hours unresolved require
+attention, even when the public catalog works. Workflow failures also remain
+visible until verified recovery. Neither check changes supplier timestamps or
+reintroduces excluded products.
+
+The versioned `scripts/raspberry-run-site.py` is installed as the private scheduler
+entry point `~/.codex/catalog-autonomy/run-site.py`. It retains collection alerts on
+healthy no-ops and closes them only after a verified recovery with no unresolved
+query. Its credentials and configuration remain outside this repository. Deploy
+this entry point together with `local-recovery.mjs`; retain the existing systemd
+timers and portfolio lock. `npm test` includes the Python notification policy.
+
+Each variant also runs `audit:catalog-forecast` in `verify:publication`, including
+manual/CI/Vercel publication. It verifies snapshot integrity, the existing minimum
+of 20 fresh products, and three recommendation profiles with merchant offers now
+and at +12 hours, using that market's eligibility rules.
