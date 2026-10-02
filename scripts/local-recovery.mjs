@@ -13,7 +13,7 @@ import { mayAttemptRepair, parseEngineFailure, repairFingerprint, REPAIR_POLICY_
 import { runEngineAutoRepair, resumeEngineAutoRepair } from "./engine-auto-repair.mjs";
 import { repairSandboxArgs } from "./repair-sandbox.mjs";
 
-import { observeCollection, recordWorkflowFailure, recordVerifiedWorkflow, sourceHealthSummary } from "./source-health.mjs";
+import { observeCollection, recordWorkflowFailure, recordVerifiedWorkflow, sourceHealthSummary, validateCollection } from "./source-health.mjs";
 
 async function observeWork(state, work, config, id, verifiedSha) {
   const reportPath = join(work, "exports/audits/amazon-collection-health.json");
@@ -33,6 +33,13 @@ const save = async (path, value) => { await writeFile(`${path}.tmp`, JSON.string
 const exists = async path => { try { await access(path); return true; } catch { return false; } };
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", timeout: 90_000, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }).trim();
 const gh = path => JSON.parse(execFileSync("gh", ["api", path], { encoding: "utf8", timeout: 45_000, stdio: ["ignore", "pipe", "pipe"] }));
+
+export function assertCollectionEvidence(report, market, startedAt, beforeHash, afterHash) {
+  assert.ok(report, "collection_report_missing");
+  validateCollection(report, market);
+  assert.ok(Date.parse(report.observedAt) >= startedAt - 1000, "collection_report_not_current");
+  assert.notEqual(afterHash, beforeHash, "collection_output_unchanged");
+}
 
 export function decideRecovery(health, state = {}, now = Date.now()) {
   if (state.pendingSha) return "verify_pending";
@@ -339,8 +346,18 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
         // Only collection receives supplier credentials; validation and browser processes do not.
         const scopedEnv = args[1] === "fetch:amazon-catalog" || args[1] === "check:amazon" ? env : collectionEnvironment(process.env, {}, "");
         // Omit absent values from the non-supplier environment rather than stringifying them.
+        const collectionStartedAt = Date.now();
+        const beforeCollectionHash = args[1] === "fetch:amazon-catalog"
+          ? createHash("sha256").update(await readFile(join(work, config.demo))).digest("hex") : null;
         try {
           await command(work, "npm", args, log, Object.fromEntries(Object.entries(scopedEnv).filter(([, value]) => value != null)), 1_200_000, lockPath);
+          if (args[1] === "fetch:amazon-catalog") {
+            step = "collection_evidence";
+            const reportPath = join(work, "exports/audits/amazon-collection-health.json");
+            const report = await exists(reportPath) ? await json(reportPath) : null;
+            const afterHash = createHash("sha256").update(await readFile(join(work, config.demo))).digest("hex");
+            assertCollectionEvidence(report, id, collectionStartedAt, beforeCollectionHash, afterHash);
+          }
         } finally {
           if (args[1] === "fetch:amazon-catalog" && await exists(join(work, "exports/audits/amazon-collection-health.json"))) {
             state = await observeWork(state, work, config, id);
