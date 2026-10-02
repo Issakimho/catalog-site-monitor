@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-01T00:11:18.451Z",
+  "checkedAt": "2026-10-02T00:15:03.503Z",
   "sites": [
     {
       "site": "fr",
@@ -79,8 +79,8 @@
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -121,8 +121,8 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -142,8 +142,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
