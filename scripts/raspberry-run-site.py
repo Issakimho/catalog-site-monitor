@@ -31,14 +31,17 @@ def alert(site, failed):
         fcntl.flock(alert_lock,fcntl.LOCK_EX)
         title = '[Raspberry] Enrichissement FR' if site == 'fr' else f'[Raspberry] Collecte {site.upper()}'
         marker = f'<!-- raspberry-catalog-v1:{site} -->'
-        issues = json.loads(run(['gh', 'api', 'repos/Issakimho/catalog-site-monitor/issues?state=open&per_page=100']).stdout)
-        matching = [i for i in issues if not i.get('pull_request') and i.get('title') == title
-                    and i.get('user', {}).get('login') == 'Issakimho' and marker in (i.get('body') or '')]
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('raspberry_alerts', MONITOR/'scripts/raspberry_alerts.py')
+        alerts = importlib.util.module_from_spec(spec); spec.loader.exec_module(alerts)
+        cache = BASE / ('collection-alert-' + site + '.json')
+        matching = alerts.find_alerts(lambda args: run(args).stdout, cache, title, marker)
         if failed and not matching:
             worker = "L'enrichissement français" if site == 'fr' else 'Le collecteur'
             body = marker + '\n\n' + worker + ' du Raspberry a échoué, manque de place disque ou présente une panne partielle persistante. Les journaux restent privés sur le Raspberry. Le contrôle public continue de vérifier le catalogue live. Les dates des offres ne sont jamais modifiées sans collecte. Sur les variantes, seule une réparation limitée du sélecteur peut être publiée après CI et vérification du site.'
-            run(['gh', 'issue', 'create', '--repo', 'Issakimho/catalog-site-monitor', '--title', title,
+            created = run(['gh', 'issue', 'create', '--repo', 'Issakimho/catalog-site-monitor', '--title', title,
                  '--body', body, '--assignee', 'Issakimho'])
+            alerts.remember_alert(cache, created.stdout)
         elif not failed:
             for issue in matching:
                 run(['gh', 'issue', 'close', str(issue['number']), '--repo', 'Issakimho/catalog-site-monitor',

@@ -85,3 +85,16 @@ test("a checked repair PR resumes independently of supplier budgets and public c
   assert.equal(decideRecovery({ status: 'critical' }, { ...state, pendingSha: 'merged' }, now), 'verify_pending');
   assert.equal(decideRecovery({ status: 'critical' }, { ...state, engineRepair: { ...state.engineRepair, status: 'needs_attention' } }, now), 'retry_limit');
 });
+
+
+test("a successful exit without fresh collection evidence cannot publish old data", async () => {
+  const { assertCollectionEvidence } = await import("../scripts/local-recovery.mjs");
+  const now = Date.now();
+  const report = { schemaVersion: 1, marketplace: "DE", collectionId: "12345678-1234-1234-1234-123456789012",
+    observedAt: new Date(now).toISOString(), queries: [{ key: "a".repeat(64), status: "healthy" }] };
+  assertCollectionEvidence(report, "de", now, "before", "after");
+  assert.throws(() => assertCollectionEvidence(null, "de", now, "same", "same"), /collection_report_missing/);
+  assert.throws(() => assertCollectionEvidence(report, "de", now, "same", "same"), /collection_output_unchanged/);
+  assert.throws(() => assertCollectionEvidence({ ...report, observedAt: new Date(now - 3600000).toISOString() }, "de", now, "before", "after"), /collection_report_not_current/);
+  assert.throws(() => assertCollectionEvidence(report, "es", now, "before", "after"));
+});
