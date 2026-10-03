@@ -283,3 +283,29 @@ Each variant also runs `audit:catalog-forecast` in `verify:publication`, includi
 manual/CI/Vercel publication. It verifies snapshot integrity, the existing minimum
 of 20 fresh products, and three recommendation profiles with merchant offers now
 and at +12 hours, using that market's eligibility rules.
+
+### Collector entrypoint self-repair
+
+A successful collector command with missing, old or unchanged acquisition evidence
+can invoke the `entrypoint-v1` repair recipe. This is a deterministic repair of the
+known import-only locale launcher, not permission for Codex to rewrite arbitrary
+supplier code. The entire launcher, its market defaults and its npm entrypoint must
+match the known template; direct collectors, changed data, authentication failures,
+provider failures and unknown code are excluded.
+
+The worker reproduces the silent exit in bubblewrap without credentials, appends a
+real CLI regression without changing existing tests, and proves that the corrected
+launcher reaches its missing-configuration check. Only then does it run the actual
+collection with the existing market-scoped credentials. Fresh acquisition evidence,
+publication tests, catalog integrity and current/+12-hour browser journeys remain
+mandatory. The initial no-op and its one repaired collection count as one existing
+collection attempt; the daily supplier budget is never reset. The same base revision
+cannot trigger this code repair again within 24 hours.
+
+The patch is limited to the exact launcher replacement, the controller-generated
+regression appendix and the normal catalog artifacts. It is published through a PR
+with passing CI before merge, followed by exact deployment verification. The worker
+persists branch/head before pushing, resumes an interrupted PR or merge before any
+new supplier call, and keeps failures visible. A moved branch, changed patch, failed
+CI, advanced main or expired candidate cannot merge. Other collector defects still
+require a new reviewed recipe or human intervention.
