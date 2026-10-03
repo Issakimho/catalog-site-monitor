@@ -122,6 +122,11 @@ function validatedPullRequest(checks, runs) {
 
 function publicationPlan(manifest) {
   const script = manifest.scripts?.["verify:publication"];
+  const patchedSuffix = " && npm run audit:dependencies";
+  if (typeof script === "string" && script.endsWith(patchedSuffix) &&
+      manifest.scripts["audit:dependencies"] === "node scripts/dependency-patches.mjs audit") {
+    return { offline: script.slice(0, -patchedSuffix.length), audit: ["run", "audit:dependencies"] };
+  }
   const suffix = " && npm audit --omit=dev --audit-level=high";
   if (typeof script === "string" && script.endsWith(suffix)) {
     return { offline: script.slice(0, -suffix.length), audit: ["audit", "--omit=dev", "--audit-level=high"] };
