@@ -121,7 +121,7 @@ def handle(site,observed,security,m,check_only=False):
         m.save(m.BASE/site/'dependency-upstream.json',{'checkedAt':m.now(),'patches':info})
         if not info:return None
         p=info[0]
-        if p['status'] in ('attention','expired'):
+        if p['status'] in ('attention','expired') and not p.get('candidate'):
             m.notify('dependency-'+site,{'reason':'temporary_patch_'+p['status'],'attempts':state.get('attempts',0),'diagnosis':'Version officielle disponible : '+p['latest']+'. Échéance fixe : '+p['expiresAt']})
         version=p.get('candidate')
         if not version or check_only:return None
@@ -161,7 +161,11 @@ def renew_dependency_budget(incident,advisories,sha,now):
         if isinstance((fix:=item.get('fixAvailable')),dict) and fix.get('isSemVerMajor') is False
         and re.fullmatch(r'[a-zA-Z0-9@/_-]+',fix.get('name',''))
         and re.fullmatch(r'\d+\.\d+\.\d+',fix.get('version',''))})
-    if not targets:return False
+    if not targets:
+        baseline=hashlib.sha256(b'[]').hexdigest()
+        seen=incident.setdefault('dependencyCandidates',[])
+        if baseline not in seen:seen.append(baseline)
+        return False
     key=hashlib.sha256(json.dumps(targets).encode()).hexdigest()
     seen=incident.setdefault('dependencyCandidates',[])
     if key in seen:return False
