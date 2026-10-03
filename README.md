@@ -323,3 +323,11 @@ persists branch/head before pushing, resumes an interrupted PR or merge before a
 new supplier call, and keeps failures visible. A moved branch, changed patch, failed
 CI, advanced main or expired candidate cannot merge. Other collector defects still
 require a new reviewed recipe or human intervention.
+
+### Temporary dependency backports and upstream recovery
+
+The five sites use a reviewed, source-pinned backport for GHSA-ch52-4w7c-c8xp until an official compatible `http-cache-semantics` release passes the security regression corpus. This is an actual source fix, not a fabricated version bump: the vendored package retains upstream version 4.2.0. Site publication verifies the module Astro loads, its digest and 54 cache-reuse cases. An online audit of both the installed graph and reconstructed original registry graph keeps new advisories visible. Only the exact finding fixed by that verified recipe is accounted for.
+
+`scripts/dependency_maintenance.py` is imported by the Raspberry maintenance runner. Its audit cache is at most six hours old; the maintenance timer checks the upstream version at each pass. An official patch candidate gets at most two attempts. Retirement can change only the package reference, that dependency's lock entries and retirement metadata. It must pass the existing site, security and browser gates before a PR is created. CI, preview statuses and unchanged base/head are checked before merge; exact production verification closes the incident. Saved branch/PR/merge state is resumed after an interruption.
+
+The patch warns after seven days and blocks publication after 21 days. The observer continues checking upstream after expiry. Deadlines and catalog dates are never refreshed to make checks green. A new compatible registry fix can reopen a previously exhausted dependency incident once per distinct candidate; breaking downgrades and repeated evidence cannot reset its budget. Unknown vulnerabilities and unpublished patches require a separately reviewed recipe with regression evidence; this system does not automatically trust arbitrary upstream PRs.
