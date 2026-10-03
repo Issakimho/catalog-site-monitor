@@ -43,6 +43,13 @@ class Policy(unittest.TestCase):
   fix={'package':{'fixAvailable':{'name':'package','version':'1.0.1','isSemVerMajor':False}}}
   self.assertTrue(d.renew_dependency_budget(state,fix,'base','time'))
   self.assertEqual(state['attempts'],0)
+ def test_npm_in_range_fix_becoming_available_reopens_once(self):
+  state={'attempts':2,'phase':'needs_attention'}
+  self.assertFalse(d.renew_dependency_budget(state,{'package':{'fixAvailable':False}},'base','time'))
+  self.assertTrue(d.renew_dependency_budget(state,{'package':{'fixAvailable':True}},'base','time'))
+  state['attempts']=2
+  self.assertFalse(d.renew_dependency_budget(state,{'package':{'fixAvailable':True}},'base','time'))
+  self.assertEqual(state['attempts'],2)
  def test_failed_official_candidate_stops_after_two_real_controller_attempts(self):
   with tempfile.TemporaryDirectory() as folder:
    base=Path(folder);saved={};calls=[];before,after=self.fixture()

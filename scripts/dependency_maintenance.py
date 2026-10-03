@@ -161,6 +161,8 @@ def renew_dependency_budget(incident,advisories,sha,now):
         if isinstance((fix:=item.get('fixAvailable')),dict) and fix.get('isSemVerMajor') is False
         and re.fullmatch(r'[a-zA-Z0-9@/_-]+',fix.get('name',''))
         and re.fullmatch(r'\d+\.\d+\.\d+',fix.get('version',''))})
+    targets += sorted((name, 'compatible-range-fix') for name,item in advisories.items()
+        if item.get('fixAvailable') is True and re.fullmatch(r'[a-zA-Z0-9@/_-]+',name))
     if not targets:
         baseline=hashlib.sha256(b'[]').hexdigest()
         seen=incident.setdefault('dependencyCandidates',[])
