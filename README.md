@@ -111,7 +111,12 @@ adversarial) starts one repair attempt per base revision and test family in
 24 hours. Market, supplier, dependency, calibration and infrastructure failures
 do not enter this repair path. The controller first reproduces the failure
 with the exact rejected candidate in a disposable checkout. A Codex CLI session
-uses the existing ChatGPT subscription in a disposable checkout. Codex's command
+uses the existing ChatGPT subscription and explicit `gpt-6.1-sol` with `medium`
+reasoning in a disposable checkout. A patch that respects the protected contracts
+but still fails a recognized engine publication test gets one fresh attempt with
+`high` reasoning and the same original candidate. No third call is allowed within
+that repair; the existing 24-hour cooldown remains. Model/access errors, audits,
+publication failures and policy violations do not trigger this escalation. Codex's command
 permissions deny access to machine files outside the checkout, including its own
 login, supplier and GitHub credentials, and deny network access. The controller
 accepts changes only to existing engine selection, scoring, domain and
@@ -154,6 +159,15 @@ the ChatGPT subscription. A fixed private controller owns Git, the six-file
 allowlist, local tests, exact-SHA trusted workflow validation and publication.
 Success requires a Vercel deployment for that SHA, byte-identical public catalog
 files and healthy browser journeys. An empty review queue makes no Codex call.
+The active private FR and variant enrichment runners use `gpt-6.1-sol` with
+`medium` reasoning, as does maintenance diagnosis. Existing bounded product
+correction calls use `high`; maintenance uses `high` only after a failed repair
+validation without dependency advisories. These settings live in the Raspberry
+runners, not the paused desktop automations. Model changes do not reset budgets,
+incident state, quarantine decisions or publication checks.
+The Raspberry migration was validated with Codex CLI `0.160.0`; its previous
+`0.154.0` installation rejected this model with ChatGPT sign-in. Verify model
+access with the actual service account and CLI before activating a migration.
 
 ### French bridge and credential renewal
 
