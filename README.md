@@ -165,6 +165,9 @@ correction calls use `high`; maintenance uses `high` only after a failed repair
 validation without dependency advisories. These settings live in the Raspberry
 runners, not the paused desktop automations. Model changes do not reset budgets,
 incident state, quarantine decisions or publication checks.
+The Raspberry migration was validated with Codex CLI `0.160.0`; its previous
+`0.154.0` installation rejected this model with ChatGPT sign-in. Verify model
+access with the actual service account and CLI before activating a migration.
 
 ### French bridge and credential renewal
 
