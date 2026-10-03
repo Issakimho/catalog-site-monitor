@@ -12,6 +12,7 @@ import { fetchBytes, inspectSnapshot, checkSite, browserEnvironment, browserLaun
 import { mayAttemptRepair, parseEngineFailure, repairFingerprint, REPAIR_POLICY_VERSION } from "./engine-repair-policy.mjs";
 import { runEngineAutoRepair, resumeEngineAutoRepair } from "./engine-auto-repair.mjs";
 import { repairSandboxArgs } from "./repair-sandbox.mjs";
+import { mayRepairCollector, repairCollectorLauncher, assertCollectorPatch, publishCollectorRepair, resumeCollectorPublication } from "./collector-repair.mjs";
 
 import { observeCollection, recordWorkflowFailure, recordVerifiedWorkflow, sourceHealthSummary, validateCollection } from "./source-health.mjs";
 
@@ -43,6 +44,7 @@ export function assertCollectionEvidence(report, market, startedAt, beforeHash, 
 
 export function decideRecovery(health, state = {}, now = Date.now()) {
   if (state.pendingSha) return "verify_pending";
+  if (["publishing", "pr_checks"].includes(state.collectorRepair?.status) && state.collectorRepair.workspace) return "resume_collector_pr";
   if (state.engineRepair?.status === "pr_checks" && state.engineRepair.prNumber && state.engineRepair.workspace) return "resume_engine_pr";
   const attempts = (state.attempts ?? []).filter(t => now - t < 24 * HOUR);
   if (health.status === "healthy" && health.ageHours < 12 && !state.lastFailure && !sourceHealthSummary(state, now).unresolvedQueries && !sourceHealthSummary(state, now).workflowFailure) return "healthy";
@@ -224,7 +226,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       if (sourceBase !== remoteBase && state.codeRevisionResumeSha !== remoteBase) codeRevisionResumeSha = remoteBase;
     } catch { /* Normal retry limits remain in force if the revision cannot be verified. */ }
   }
-  if (decision !== "resume_engine_pr" && !state.pendingSha && canResumeCandidate(state, Date.now(), { newCodeRevision: Boolean(codeRevisionResumeSha), newRepairPolicy })) {
+  if (!["resume_engine_pr", "resume_collector_pr"].includes(decision) && !state.pendingSha && canResumeCandidate(state, Date.now(), { newCodeRevision: Boolean(codeRevisionResumeSha), newRepairPolicy })) {
     try {
       const source = await realpath(savedSource);
       assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
@@ -237,7 +239,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       }
     } catch { /* Unusable candidates remain archived; normal collection rules apply. */ }
   }
-  if (force && !state.pendingSha) decision = "refresh"; // Manual recovery only; the saved automation never sets this flag.
+  if (force && !state.pendingSha && decision !== "resume_collector_pr") decision = "refresh"; // Never abandon a persisted collector PR.
   if (!apply || ["healthy", "cooldown", "retry_limit"].includes(decision)) return { site: id, decision, status: health.status, codes: health.codes, statePath, ...sourceHealthSummary(state) };
 
   const lockPath = join(baseDir, "lock.json");
@@ -257,7 +259,28 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
   const lock = await open(lockPath, "wx", 0o600);
   await lock.writeFile(JSON.stringify({ worker: "catalog-local-recovery-v1", pid: process.pid, startedAt: new Date().toISOString() })); await lock.close();
   let step = "start";
+  const collectorCallbacks = {
+    onPullRequest: async saved => {
+      state.collectorRepair = { ...state.collectorRepair, ...saved };
+      await save(statePath, state);
+    },
+    onMerged: async ({ sha, workspace, prUrl }) => {
+      state.collectorRepair = { ...state.collectorRepair, status: "pending_production", sha, prUrl };
+      state.pendingSha = sha; state.pendingWorkspace = workspace; state.lastWorkspace = workspace;
+      await save(statePath, state);
+    },
+    verifyProduction
+  };
   try {
+    if (decision === "resume_collector_pr") {
+      step = "collector_repair";
+      const saved = state.collectorRepair;
+      const work = await realpath(saved.workspace);
+      assert.ok(work.startsWith(`${await realpath(baseDir)}/attempt-`), "untrusted_collector_workspace");
+      assertRepository(work, config.repository);
+      await resumeCollectorPublication({ work, id, config, site, base: saved.base, head: saved.head,
+        branch: saved.branch, ...collectorCallbacks });
+    }
     if (decision === "verify_pending") {
       step = "reconcile_pending";
       const work = state.pendingWorkspace;
@@ -316,6 +339,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       assert.equal(git(work, "branch", "--show-current"), "main");
       assert.equal(git(work, "status", "--porcelain=v1", "--untracked-files=all"), "");
       const base = git(work, "rev-parse", "HEAD");
+      let collectorPatch = null;
       const manifest = await json(join(work, "config/variant-manifest.json"));
       assert.equal(await realpath(manifest.target.root), await realpath(config.root));
       const allowed = manifest.operations.catalog.refresh.allowedChangedFiles;
@@ -356,7 +380,30 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
             const reportPath = join(work, "exports/audits/amazon-collection-health.json");
             const report = await exists(reportPath) ? await json(reportPath) : null;
             const afterHash = createHash("sha256").update(await readFile(join(work, config.demo))).digest("hex");
-            assertCollectionEvidence(report, id, collectionStartedAt, beforeCollectionHash, afterHash);
+            try { assertCollectionEvidence(report, id, collectionStartedAt, beforeCollectionHash, afterHash); }
+            catch (evidenceError) {
+              if (!mayRepairCollector({ step, code: evidenceError.message, beforeHash: beforeCollectionHash, afterHash,
+                previous: state.collectorRepair, base })) throw evidenceError;
+              step = "collector_repair";
+              collectorPatch = await repairCollectorLauncher({ work, id,
+                run: (program, repairArgs) => command(work, program, repairArgs, log,
+                  Object.fromEntries(Object.entries(collectionEnvironment(process.env, {}, "")).filter(([, value]) => value != null)), 120000, lockPath),
+                onStart: async () => {
+                  state.collectorRepair = { status: "repairing", base, workspace: work, startedAt: new Date().toISOString() };
+                  await save(statePath, state);
+                }
+              });
+              if (!collectorPatch) throw evidenceError;
+              // The first command was proven to do nothing. This is the only real
+              // supplier call in this attempt; do not add or reset retry budgets.
+              step = "run fetch:amazon-catalog";
+              const restartedAt = Date.now();
+              await command(work, "npm", args, log, Object.fromEntries(Object.entries(scopedEnv).filter(([, value]) => value != null)), 1200000, lockPath);
+              step = "collection_evidence";
+              const actualReport = await exists(reportPath) ? await json(reportPath) : null;
+              const actualHash = createHash("sha256").update(await readFile(join(work, config.demo))).digest("hex");
+              assertCollectionEvidence(actualReport, id, restartedAt, beforeCollectionHash, actualHash);
+            }
           }
         } finally {
           if (args[1] === "fetch:amazon-catalog" && await exists(join(work, "exports/audits/amazon-collection-health.json"))) {
@@ -371,26 +418,33 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       assert.equal(inspectSnapshot(bytes, meta, site).status, "healthy", "candidate_not_fresh");
       step = "candidate_browser";
       await verifyCandidateBrowser(work, site);
+      const publicationPaths = collectorPatch
+        ? [...allowed, ...await assertCollectorPatch(work, id, base, allowed)] : allowed;
       const digest = createHash("sha256");
-      for (const file of allowed) digest.update(await readFile(join(work, file)));
+      for (const file of publicationPaths) digest.update(await readFile(join(work, file)));
       const candidate = digest.digest("hex");
       assert.equal(git(work, "diff", "--cached", "--name-only"), "");
-      assertChangedFiles([...git(work, "diff", "--name-only", "HEAD").split("\n"), ...git(work, "ls-files", "--others", "--exclude-standard").split("\n")].filter(Boolean), allowed);
+      assertChangedFiles([...git(work, "diff", "--name-only", "HEAD").split("\n"), ...git(work, "ls-files", "--others", "--exclude-standard").split("\n")].filter(Boolean), publicationPaths);
       assert.equal(git(work, "rev-parse", "HEAD"), base);
       git(work, "fetch", "--no-tags", "origin", "main");
       assert.equal(git(work, "rev-parse", "origin/main"), base, "remote_advanced");
-      git(work, "add", "--", ...allowed);
+      git(work, "add", "--", ...publicationPaths);
       const staged = git(work, "diff", "--cached", "--name-only").split("\n").filter(Boolean);
-      assertChangedFiles(staged, allowed);
-      const confirmed = createHash("sha256"); for (const file of allowed) confirmed.update(await readFile(join(work, file)));
+      assertChangedFiles(staged, publicationPaths);
+      const confirmed = createHash("sha256"); for (const file of publicationPaths) confirmed.update(await readFile(join(work, file)));
       assert.equal(confirmed.digest("hex"), candidate);
       if (staged.length) git(work, "commit", "-m", `chore(catalog): refresh ${id.toUpperCase()} offers`);
       const sha = git(work, "rev-parse", "HEAD");
       assert.equal(git(work, "status", "--porcelain=v1", "--untracked-files=all"), "");
-      state.pendingSha = sha; state.pendingWorkspace = work; state.lastStep = "push";
-      await save(statePath, state);
-      step = "push";
-      if (staged.length) git(work, "push", "origin", `${sha}:refs/heads/main`);
+      if (collectorPatch) {
+        step = "collector_repair";
+        await publishCollectorRepair({ work, id, base, config, site, ...collectorCallbacks });
+      } else {
+        state.pendingSha = sha; state.pendingWorkspace = work; state.lastStep = "push";
+        await save(statePath, state);
+        step = "push";
+        if (staged.length) git(work, "push", "origin", `${sha}:refs/heads/main`);
+      }
     }
     step = "verify_production";
     let proof;
@@ -399,12 +453,13 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       catch { if (attempt === 39) throw new Error("production_verification_failed"); await pause(15_000); }
     }
     state = recordVerifiedWorkflow(await observeWork(state, state.pendingWorkspace, config, id, proof.sha), proof);
+    if (state.collectorRepair?.sha === proof.sha) state.collectorRepair.status = "recovered";
     await save(statePath, state);
     // Request a fresh shared browser check. Only that checker closes the public incident.
     try { execFileSync("gh", ["workflow", "run", "monitor.yml", "--repo", "Issakimho/catalog-site-monitor"], { timeout: 30_000, stdio: "pipe" }); } catch {}
     return { site: id, decision: "recovered", ...proof, ...sourceHealthSummary(state) };
   } catch (error) {
-    if (step === "run verify:publication" && state.lastWorkspace && !state.pendingSha) {
+    if (step === "run verify:publication" && state.lastWorkspace && !state.pendingSha && state.collectorRepair?.workspace !== state.lastWorkspace) {
       try {
         const report = parseEngineFailure(await readFile(`${state.lastWorkspace}.log`, "utf8"));
         if (report) {
@@ -447,6 +502,13 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       } catch { /* Preserve the original publication failure if diagnosis itself fails. */ }
     }
     state.lastFailure = { at: new Date().toISOString(), step, code: /^[a-z_]+$/.test(error.message) ? error.message : "validation_failed" };
+    if (state.collectorRepair?.workspace === state.lastWorkspace || decision === "resume_collector_pr") {
+      const resumable = ["publishing", "pr_checks"].includes(state.collectorRepair.status) &&
+        (error.message === "repair_ci_timeout" || !/repair_ci_failed|repair_check_failed|changed|advanced|expired|out_of_scope|not_open/.test(error.message));
+      state.collectorRepair = { ...state.collectorRepair,
+        status: state.pendingSha ? "pending_production" : resumable ? state.collectorRepair.status : "needs_attention",
+        code: state.lastFailure.code };
+    }
     if (decision === "resume_engine_pr" && step === "engine_repair") {
       state.engineRepair = { ...state.engineRepair, status: state.pendingSha ? "pending_production" : error.message === "repair_ci_timeout" ? "pr_checks" : "needs_attention", code: state.lastFailure.code };
     }

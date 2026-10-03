@@ -262,7 +262,8 @@ async function runEngineAutoRepair({ id, report, config, site, baseDir, source, 
   return finishEngineRepair({ id, config, site, work, base, head, prUrl, prNumber, onMerged, verifyProduction });
 }
 
-async function finishEngineRepair({ id, config, site, work, base, head, prUrl, prNumber, onMerged, verifyProduction }) {
+export async function finishEngineRepair({ id, config, site, work, base, head, prUrl, prNumber, onMerged, verifyProduction,
+  commitTitle = `fix(recommendations): recover ${id.toUpperCase()} catalog` }) {
   let pr = ghJson(`repos/${config.repository}/pulls/${prNumber}`, work);
   assertRepairPullRequest(pr, { head, base, allowMerged: true });
   let sha;
@@ -277,7 +278,7 @@ async function finishEngineRepair({ id, config, site, work, base, head, prUrl, p
     pr = ghJson(`repos/${config.repository}/pulls/${prNumber}`, work);
     assertRepairPullRequest(pr, { head, base });
     const merged = JSON.parse(gh(["api", `repos/${config.repository}/pulls/${prNumber}/merge`, "--method", "PUT",
-      "-f", "merge_method=squash", "-f", `sha=${head}`, "-f", `commit_title=fix(recommendations): recover ${id.toUpperCase()} catalog`], work));
+      "-f", "merge_method=squash", "-f", `sha=${head}`, "-f", `commit_title=${commitTitle}`], work));
     assert.equal(merged.merged, true, "repair_merge_failed");
     sha = merged.sha;
   }
