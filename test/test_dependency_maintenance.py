@@ -5,6 +5,38 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import dependency_maintenance as d
 
 class Policy(unittest.TestCase):
+ def test_new_transitive_capability_reopens_old_escalation_once(self):
+  state={'attempts':2,'phase':'needs_attention','reason':'outside_automatic_repair_scope'}
+  findings={'sharp':{'fixAvailable':True}}
+  self.assertTrue(d.renew_transitive_policy_budget(state,findings,'time'))
+  self.assertEqual(state['attempts'],0)
+  state.update(attempts=2,phase='needs_attention',reason='outside_automatic_repair_scope')
+  self.assertFalse(d.renew_transitive_policy_budget(state,findings,'time'))
+  self.assertEqual(state['attempts'],2)
+  self.assertFalse(d.renew_transitive_policy_budget({'reason':'validation_failed'},findings,'time'))
+  self.assertFalse(d.renew_transitive_policy_budget({'reason':'outside_automatic_repair_scope'},{'sharp':{'fixAvailable':False}},'time'))
+ def test_real_sharp_and_source_map_patch_updates_preserve_contract(self):
+  fixture=json.loads((Path(__file__).parent/'fixtures/transitive-security-20261006.json').read_text())
+  changed=d.assert_transitive_patch_update(fixture['before'],fixture['after'],['sharp','source-map-js'])
+  self.assertIn('node_modules/sharp',changed)
+  self.assertIn('node_modules/source-map-js',changed)
+  self.assertIn('node_modules/@img/sharp-linux-arm64',changed)
+ def test_transitive_updates_reject_unrelated_major_downgrade_registry_and_manifest_changes(self):
+  fixture=json.loads((Path(__file__).parent/'fixtures/transitive-security-20261006.json').read_text())
+  changes=[lambda x:x['packages']['node_modules/astro'].update(version='7.3.3'),
+   lambda x:x['packages']['node_modules/sharp'].update(version='0.36.0'),
+   lambda x:x['packages']['node_modules/sharp'].update(version='0.35.3'),
+   lambda x:x['packages']['node_modules/sharp'].update(resolved='https://attacker.test/sharp.tgz'),
+   lambda x:x['packages'][''].update(scripts={'test':'skip'}),
+   lambda x:x['packages'].pop('node_modules/source-map-js'),
+   lambda x:x['packages']['node_modules/sharp'].update(hasInstallScript=False)]
+  for change in changes:
+   after=copy.deepcopy(fixture['after']);change(after)
+   with self.assertRaises(ValueError):d.assert_transitive_patch_update(fixture['before'],after,['sharp','source-map-js'])
+ def test_transitive_targets_require_explicit_in_range_fix(self):
+  self.assertEqual(d.compatible_transitive_targets({'sharp':{'fixAvailable':True}}),['sharp'])
+  for advisories in [{'sharp':{'fixAvailable':False}},{'sharp':{'fixAvailable':{'version':'0.36.0'}}},{'--force':{'fixAvailable':True}},{'pkg;command':{'fixAvailable':True}}]:
+   with self.assertRaises(ValueError):d.compatible_transitive_targets(advisories)
  def fixture(self):
   pkg={'dependencies':{d.PACKAGE:'file:vendor/'+d.PACKAGE,'astro':'^7.0.7'},'overrides':{d.PACKAGE:'$'+d.PACKAGE},'scripts':{'test':'trusted'}}
   patch={'active':True,'package':d.PACKAGE,'expiresAt':'2026-10-24T00:00:00Z','sha256':'pinned'}

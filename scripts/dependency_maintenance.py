@@ -5,6 +5,73 @@ from pathlib import Path
 PACKAGE='http-cache-semantics'
 FILES=['package.json','package-lock.json','config/dependency-patches.json']
 
+def compatible_transitive_targets(advisories):
+    targets=sorted(name for name,item in advisories.items() if item.get('fixAvailable') is True)
+    require(bool(targets) and len(targets)<=5,'no_bounded_transitive_fix')
+    require(all(re.fullmatch(r'(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*',name) for name in targets),'unsafe_dependency_name')
+    return targets
+
+def renew_transitive_policy_budget(incident,advisories,now):
+    if not advisories or not all(item.get('fixAvailable') is True for item in advisories.values()):return False
+    compatible_transitive_targets(advisories)
+    if incident.get('reason')!='outside_automatic_repair_scope' or incident.get('transitivePatchPolicy')=='patch-closure-v1':return False
+    incident.setdefault('previousAttempts',[]).append({'attempts':incident.get('attempts',0),'reason':incident.get('reason'),'at':now})
+    incident.update(attempts=0,phase='confirmed',transitivePatchPolicy='patch-closure-v1',reason='compatible_transitive_patch_repair')
+    return True
+
+def assert_transitive_patch_update(before,after,targets):
+    """Only existing registry packages in the audited dependency closure may change."""
+    require(set(before)==set(after),'lock_keys_changed')
+    require({k:v for k,v in before.items() if k!='packages'}=={k:v for k,v in after.items() if k!='packages'},'lock_metadata_changed')
+    old=before['packages'];new=after['packages']
+    require(set(old)==set(new),'dependency_added_or_removed')
+    require(old['']==new[''],'direct_dependency_contract_changed')
+    allowed=set();pending=['node_modules/'+name for name in targets]
+    while pending:
+        path=pending.pop()
+        if path in allowed:continue
+        require(path in old,'audited_dependency_missing')
+        allowed.add(path)
+        require(len(allowed)<=100,'dependency_closure_limit')
+        for field in ('dependencies','optionalDependencies'):
+            for name in old[path].get(field,{}):
+                # Resolve dependencies with Node's ancestor node_modules lookup.
+                parent=path
+                while True:
+                    candidate=parent+'/node_modules/'+name
+                    if candidate in old:pending.append(candidate);break
+                    if '/node_modules/' not in parent:
+                        candidate='node_modules/'+name
+                        if candidate in old:pending.append(candidate)
+                        break
+                    parent=parent.rsplit('/node_modules/',1)[0]
+    changed=[]
+    for path,item in new.items():
+        previous=old[path]
+        if previous==item:continue
+        require(path in allowed,'unrelated_dependency_changed')
+        require(not item.get('link') and not previous.get('link'),'local_patch_changed')
+        versions=[re.fullmatch(r'(\d+)\.(\d+)\.(\d+)',p.get('version','')) for p in (previous,item)]
+        require(all(versions),'unsupported_dependency_version')
+        a,b=[tuple(map(int,v.groups())) for v in versions]
+        require(a[:2]==b[:2] and b[2]>a[2],'not_a_forward_patch_release')
+        require(item.get('resolved','').startswith('https://registry.npmjs.org/'),'untrusted_dependency_registry')
+        require(re.fullmatch(r'sha512-[A-Za-z0-9+/]+=*',item.get('integrity','')),'missing_dependency_integrity')
+        for field in ('name','link','hasInstallScript','bin','cpu','os','engines'):
+            require(item.get(field)==previous.get(field),'dependency_execution_contract_changed')
+        changed.append(path)
+    require(changed and all('node_modules/'+name in changed for name in targets),'audited_dependency_not_updated')
+    return changed
+
+def update_compatible_transitives(work,advisories,m):
+    targets=compatible_transitive_targets(advisories)
+    package=(work/'package.json').read_bytes()
+    before=m.load(work/'package-lock.json')
+    m.run(['npm','update',*targets,'--package-lock-only','--ignore-scripts','--no-audit','--registry=https://registry.npmjs.org'],cwd=work,timeout=600)
+    require((work/'package.json').read_bytes()==package,'package_manifest_changed')
+    assert_transitive_patch_update(before,m.load(work/'package-lock.json'),targets)
+    return ['package-lock.json']
+
 def require(ok,message):
     if not ok:raise ValueError(message)
 
