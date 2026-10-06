@@ -254,6 +254,14 @@ and validates the snapshot, then checks the live deployment as usual. Two resume
 attempts per day and a 30-minute cooldown bound validation retries separately.
 Expired data is never redated or used to bypass a failing publication gate.
 
+If a saved validation failure was repaired by a separate publication, recovery
+can reconcile that incident once per main revision. The published catalog must
+be healthy with the original generation date, and its normalized supplier file
+must match the saved private attempt byte for byte. CI, deployment, live snapshot
+bytes and the current/+12-hour browser paths are verified before closing the
+workflow failure. Collection budgets and unresolved supplier queries are retained;
+this route neither calls suppliers nor republishes data.
+
 On the Raspberry, collector, enrichment and incident-recovery services retain
 `NoNewPrivileges=true` and use `PrivateTmp=false`. Bubblewrap and Codex create
 their own isolated temporary filesystems; a systemd private temporary namespace

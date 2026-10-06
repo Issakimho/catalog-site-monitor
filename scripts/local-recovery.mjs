@@ -15,6 +15,7 @@ import { repairSandboxArgs } from "./repair-sandbox.mjs";
 import { mayRepairCollector, repairCollectorLauncher, assertCollectorPatch, publishCollectorRepair, resumeCollectorPublication } from "./collector-repair.mjs";
 
 import { observeCollection, recordWorkflowFailure, recordVerifiedWorkflow, sourceHealthSummary, validateCollection } from "./source-health.mjs";
+import { canReconcilePublishedSource, reconcilePublishedSource } from "./published-source-recovery.mjs";
 
 async function observeWork(state, work, config, id, verifiedSha) {
   const reportPath = join(work, "exports/audits/amazon-collection-health.json");
@@ -240,6 +241,12 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
     } catch { /* Unusable candidates remain archived; normal collection rules apply. */ }
   }
   if (force && !state.pendingSha && decision !== "resume_collector_pr") decision = "refresh"; // Never abandon a persisted collector PR.
+  if (apply && !force && codeRevisionResumeSha && savedSource) {
+    try {
+      const candidate = await json(join(savedSource, `public${site.data}catalog-current.json`));
+      if (canReconcilePublishedSource(health, state, candidate.generatedAt, codeRevisionResumeSha)) decision = "reconcile_publication";
+    } catch { /* Missing original evidence never closes an incident. */ }
+  }
   if (!apply || ["healthy", "cooldown", "retry_limit"].includes(decision)) return { site: id, decision, status: health.status, codes: health.codes, statePath, ...sourceHealthSummary(state) };
 
   const lockPath = join(baseDir, "lock.json");
@@ -272,6 +279,35 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
     verifyProduction
   };
   try {
+    if (decision === "reconcile_publication") {
+      step = "reconcile_external_publication";
+      const source = await realpath(savedSource);
+      assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
+      assertRepository(source, config.repository);
+      const work = join(baseDir, `attempt-${Date.now()}`);
+      state.externalReconciliationSha = codeRevisionResumeSha;
+      await save(statePath, state);
+      await command(baseDir, "git", ["clone", "--quiet", "--single-branch", "--branch", "main", "--reference-if-able", config.root, "--dissociate", `https://github.com/${config.repository}.git`, work], `${work}.log`, process.env, 180_000, lockPath);
+      assertRepository(work, config.repository);
+      const sha = git(work, "rev-parse", "HEAD");
+      assert.equal(sha, codeRevisionResumeSha, "external_publication_advanced");
+      git(work, "merge-base", "--is-ancestor", git(source, "rev-parse", "HEAD"), sha);
+      const sourceBytes = await readFile(join(source, config.demo));
+      const publishedBytes = await readFile(join(work, config.demo));
+      assert.deepEqual(publishedBytes, sourceBytes, "published_supplier_evidence_mismatch");
+      // Resume the existing exact-SHA verification after a transient interruption.
+      state.pendingSha = sha;
+      state.pendingWorkspace = work;
+      await save(statePath, state);
+      const reconciled = await reconcilePublishedSource(state, {
+        sourceBytes, publishedBytes,
+        verify: () => verifyProduction(config, site, sha, work),
+        observe: (current, verifiedSha) => observeWork(current, work, config, id, verifiedSha)
+      });
+      state = reconciled.state;
+      await save(statePath, state);
+      return { site: id, decision: "recovered", ...reconciled.proof, ...sourceHealthSummary(state) };
+    }
     if (decision === "resume_collector_pr") {
       step = "collector_repair";
       const saved = state.collectorRepair;
