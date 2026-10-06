@@ -69,7 +69,14 @@ def update_compatible_transitives(work,advisories,m):
     before=m.load(work/'package-lock.json')
     m.run(['npm','update',*targets,'--package-lock-only','--ignore-scripts','--no-audit','--registry=https://registry.npmjs.org'],cwd=work,timeout=600)
     require((work/'package.json').read_bytes()==package,'package_manifest_changed')
-    assert_transitive_patch_update(before,m.load(work/'package-lock.json'),targets)
+    after=m.load(work/'package-lock.json')
+    # npm derives a nameless project's lock name from its temporary directory.
+    # Restore that inert field before checking the complete original identity.
+    if not json.loads(package).get('name') and after.get('name')==work.name and before.get('name')!=after.get('name'):
+        if 'name' in before:after['name']=before['name']
+        else:after.pop('name',None)
+        m.save(work/'package-lock.json',after)
+    assert_transitive_patch_update(before,after,targets)
     return ['package-lock.json']
 
 def require(ok,message):

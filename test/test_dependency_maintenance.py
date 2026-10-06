@@ -5,6 +5,16 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import dependency_maintenance as d
 
 class Policy(unittest.TestCase):
+ def test_nameless_italian_project_preserves_directory_derived_lock_name(self):
+  fixture=json.loads((Path(__file__).parent/'fixtures/transitive-security-20261006.json').read_text())
+  with tempfile.TemporaryDirectory() as folder:
+   work=Path(folder);before=fixture['before'];after=fixture['after'];after['name']=work.name
+   (work/'package.json').write_text('{}\n');(work/'package-lock.json').write_text(json.dumps(before))
+   def save(path,value):path.write_text(json.dumps(value))
+   def run(*args,**kw):save(work/'package-lock.json',after)
+   m=SimpleNamespace(load=lambda p:json.loads(p.read_text()),save=save,run=run)
+   self.assertEqual(d.update_compatible_transitives(work,{'sharp':{'fixAvailable':True},'source-map-js':{'fixAvailable':True}},m),['package-lock.json'])
+   self.assertEqual(m.load(work/'package-lock.json')['name'],before['name'])
  def test_new_transitive_capability_reopens_old_escalation_once(self):
   state={'attempts':2,'phase':'needs_attention','reason':'outside_automatic_repair_scope'}
   findings={'sharp':{'fixAvailable':True}}
