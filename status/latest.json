@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-14T01:24:49.360Z",
+  "checkedAt": "2026-10-15T03:50:22.288Z",
   "sites": [
     {
       "site": "fr",
@@ -93,8 +93,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         }
       ]
@@ -107,22 +107,22 @@
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -135,15 +135,15 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         }
       ]
@@ -156,8 +156,8 @@
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
@@ -191,8 +191,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         }
       ]
@@ -219,15 +219,15 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
@@ -240,8 +240,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
