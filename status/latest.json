@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-16T00:46:49.844Z",
+  "checkedAt": "2026-10-17T00:47:33.407Z",
   "sites": [
     {
       "site": "fr",
@@ -107,53 +107,51 @@
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         }
       ]
     },
     {
       "site": "es",
-      "status": "warning",
-      "codes": [
-        "freshness_risk_12h"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
@@ -242,8 +240,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         }
       ]
