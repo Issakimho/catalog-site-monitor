@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-19T00:31:51.797Z",
+  "checkedAt": "2026-10-20T05:21:10.391Z",
   "sites": [
     {
       "site": "fr",
@@ -65,8 +65,8 @@
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -86,8 +86,8 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -121,8 +121,57 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        },
+        {
+          "profile": "drawing",
+          "forecastHours": 12,
           "cards": 3,
           "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "bim",
+          "forecastHours": 12,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "rendering",
+          "forecastHours": 12,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        }
+      ]
+    },
+    {
+      "site": "es",
+      "status": "healthy",
+      "codes": [],
+      "probes": [
+        {
+          "profile": "drawing",
+          "forecastHours": 0,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        },
+        {
+          "profile": "bim",
+          "forecastHours": 0,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        },
+        {
+          "profile": "rendering",
+          "forecastHours": 0,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -135,67 +184,15 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        }
-      ]
-    },
-    {
-      "site": "es",
-      "status": "critical",
-      "codes": [
-        "current_quiz_failed",
-        "quiz_risk_12h"
-      ],
-      "probes": [
-        {
-          "profile": "drawing",
-          "forecastHours": 0,
-          "cards": 1,
-          "ctas": 1,
-          "code": "ok"
-        },
-        {
-          "profile": "bim",
-          "forecastHours": 0,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
-        },
-        {
-          "profile": "rendering",
-          "forecastHours": 0,
-          "cards": 1,
-          "ctas": 1,
-          "code": "ok"
-        },
-        {
-          "profile": "drawing",
-          "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
-          "code": "ok"
-        },
-        {
-          "profile": "bim",
-          "forecastHours": 12,
-          "cards": 0,
-          "ctas": 0,
-          "code": "no_recommendations"
-        },
-        {
-          "profile": "rendering",
-          "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
@@ -208,8 +205,8 @@
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
