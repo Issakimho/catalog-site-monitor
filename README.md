@@ -169,6 +169,20 @@ The Raspberry migration was validated with Codex CLI `0.160.0`; its previous
 `0.154.0` installation rejected this model with ChatGPT sign-in. Verify model
 access with the actual service account and CLI before activating a migration.
 
+### Manual recovery from a standby host
+
+When the Raspberry is unavailable, an explicitly authorized one-off run may use
+an existing standby checkout and that market's credentials in place. Keep the
+scheduled collectors paused on the standby host. In a private configuration, set
+`root` to the exact standby checkout and `manifestRoot` to the exact root recorded
+in the site's production manifest. Run `local-recovery.mjs <site> --run
+--manual-host` from that checkout with `CATALOG_RECOVERY_CONFIG` pointing to the
+private configuration. Without the flag, the original real-path check remains in
+force. The worker still checks the real working directory, both origin URLs,
+market and affiliate identity, collection evidence, publication allowlist,
+concurrent main advancement, CI, deployment, exact public bytes and browser flows.
+The option changes no production manifest or recurring schedule.
+
 ### French bridge and credential renewal
 
 The bridge was verified on 13 September 2026 by dispatching the guarded private
