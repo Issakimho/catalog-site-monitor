@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-21T00:59:30.321Z",
+  "checkedAt": "2026-10-22T05:24:24.368Z",
   "sites": [
     {
       "site": "fr",
@@ -52,10 +52,8 @@
     },
     {
       "site": "us",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
@@ -67,8 +65,8 @@
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -88,8 +86,8 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -103,10 +101,8 @@
     },
     {
       "site": "de",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
@@ -118,8 +114,8 @@
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
@@ -139,8 +135,8 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
@@ -154,10 +150,8 @@
     },
     {
       "site": "es",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
@@ -205,51 +199,49 @@
     },
     {
       "site": "it",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
