@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-10-22T05:24:24.368Z",
+  "checkedAt": "2026-10-23T00:58:35.036Z",
   "sites": [
     {
       "site": "fr",
@@ -52,8 +52,10 @@
     },
     {
       "site": "us",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "snapshot_overdue"
+      ],
       "probes": [
         {
           "profile": "drawing",
@@ -101,8 +103,10 @@
     },
     {
       "site": "de",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "snapshot_overdue"
+      ],
       "probes": [
         {
           "profile": "drawing",
@@ -150,8 +154,10 @@
     },
     {
       "site": "es",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "snapshot_overdue"
+      ],
       "probes": [
         {
           "profile": "drawing",
@@ -199,8 +205,10 @@
     },
     {
       "site": "it",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "snapshot_overdue"
+      ],
       "probes": [
         {
           "profile": "drawing",
