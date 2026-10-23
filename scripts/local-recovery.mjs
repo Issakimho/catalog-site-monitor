@@ -15,7 +15,7 @@ import { repairSandboxArgs } from "./repair-sandbox.mjs";
 import { mayRepairCollector, repairCollectorLauncher, assertCollectorPatch, publishCollectorRepair, resumeCollectorPublication } from "./collector-repair.mjs";
 
 import { observeCollection, recordWorkflowFailure, recordVerifiedWorkflow, sourceHealthSummary, validateCollection } from "./source-health.mjs";
-import { canReconcilePublishedSource, reconcilePublishedSource } from "./published-source-recovery.mjs";
+import { canReconcilePublicationFailure, canReconcilePublishedSource, reconcilePublishedSource } from "./published-source-recovery.mjs";
 
 async function observeWork(state, work, config, id, verifiedSha) {
   const reportPath = join(work, "exports/audits/amazon-collection-health.json");
@@ -217,7 +217,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
     } catch { /* No diagnostic means no extra retry. */ }
   }
   const savedSource = state.lastFailure?.step === "engine_repair" ? state.engineRepair?.source : state.lastWorkspace;
-  if (!state.pendingSha && ["run verify:publication", "engine_repair"].includes(state.lastFailure?.step) && savedSource) {
+  if (!state.pendingSha && canReconcilePublicationFailure(state) && savedSource) {
     try {
       const source = await realpath(savedSource);
       assert.ok(source.startsWith(`${await realpath(baseDir)}/attempt-`));
