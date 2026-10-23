@@ -42,3 +42,17 @@ test("an externally repaired publication preserves unresolved supplier query fai
   assert.equal(sourceHealthSummary(result.state).unresolvedQueries, 1);
   assert.equal(sourceHealthSummary(result.state).canCloseIncident, false);
 });
+
+test("a corrected publication reconciles failures from the exact deployment or superseded pending commit", async () => {
+  const health = { status: "healthy", generatedAt: date };
+  for (const step of ["verify_production", "reconcile_pending", "engine_repair"]) {
+    const failed = { ...structuredClone(state), lastFailure: { step, code: "ci_failed" } };
+    assert.equal(canReconcilePublishedSource(health, failed, date, sha), true);
+    assert.equal(canReconcilePublishedSource(health, { ...failed, pendingSha: sha }, date, sha), false);
+    assert.equal(canReconcilePublishedSource(health, failed, "2026-10-05T15:50:23.889Z", sha), false);
+    const recovered = await reconcilePublishedSource(failed, { sourceBytes: Buffer.from("unchanged raw supplier data"), publishedBytes: Buffer.from("unchanged raw supplier data"), verify: async () => ({ sha }), observe: async s => s });
+    assert.equal(sourceHealthSummary(recovered.state).workflowFailure, false);
+    assert.deepEqual(recovered.state.attempts, failed.attempts);
+    assert.deepEqual(recovered.state.resumeAttempts, failed.resumeAttempts);
+  }
+});

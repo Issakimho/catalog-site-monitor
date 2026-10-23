@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { recordVerifiedWorkflow } from "./source-health.mjs";
 
+export function canReconcilePublicationFailure(state) {
+  return ["run verify:publication", "engine_repair", "verify_production", "reconcile_pending"].includes(state.lastFailure?.step);
+}
+
 export function canReconcilePublishedSource(health, state, candidateDate, sha) {
   return health.status === "healthy" && /^[a-f0-9]{40}$/.test(sha ?? "")
     && Number.isFinite(Date.parse(candidateDate))
-    && !state.pendingSha && state.lastFailure?.step === "run verify:publication"
+    && !state.pendingSha && canReconcilePublicationFailure(state)
     && candidateDate === health.generatedAt
     && state.externalReconciliationSha !== sha;
 }
