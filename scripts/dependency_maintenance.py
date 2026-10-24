@@ -54,7 +54,10 @@ def assert_transitive_patch_update(before,after,targets):
         versions=[re.fullmatch(r'(\d+)\.(\d+)\.(\d+)',p.get('version','')) for p in (previous,item)]
         require(all(versions),'unsupported_dependency_version')
         a,b=[tuple(map(int,v.groups())) for v in versions]
-        require(a[:2]==b[:2] and b[2]>a[2],'not_a_forward_patch_release')
+        # npm update stays within the declared range. Permit a forward minor
+        # within a stable major, while 0.x minor changes remain breaking.
+        require(a[0]==b[0] and (a[0]>0 or a[1]==b[1]) and b>a,
+            'not_a_forward_compatible_release')
         require(item.get('resolved','').startswith('https://registry.npmjs.org/'),'untrusted_dependency_registry')
         require(re.fullmatch(r'sha512-[A-Za-z0-9+/]+=*',item.get('integrity','')),'missing_dependency_integrity')
         for field in ('name','link','hasInstallScript','bin','cpu','os','engines'):
