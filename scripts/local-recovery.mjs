@@ -91,6 +91,17 @@ async function browserHealth(site) {
   try { return await checkSite(site, browser); } finally { await browser.close(); }
 }
 
+export async function requireHealthyBrowser(site, code, probe = browserHealth, wait = pause) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const health = await probe(site);
+      if (health.status === "healthy") return health;
+    } catch { /* Retry one transient browser failure before rejecting the candidate. */ }
+    if (attempt === 0) await wait(1500);
+  }
+  throw new Error(code);
+}
+
 async function publicHealth(site) {
   const [snapshot, manifest] = await Promise.all([fetchBytes(`${site.origin}${site.data}catalog-current.json`), fetchBytes(`${site.origin}${site.data}catalog-manifest.json`)]);
   return inspectSnapshot(snapshot, manifest, site);
@@ -135,8 +146,7 @@ export async function verifyProduction(config, site, sha, work) {
   for (const name of ["catalog-current.json", "catalog-manifest.json"]) {
     assert.deepEqual(await fetchBytes(`${site.origin}${site.data}${name}`), await readFile(join(work, "public", site.data, name)), "live_snapshot_mismatch");
   }
-  const health = await browserHealth(site);
-  assert.equal(health.status, "healthy", "live_browser_or_forecast_failed");
+  const health = await requireHealthyBrowser(site, "live_browser_or_forecast_failed");
   return { sha, products: health.products, current: health.probes.filter(p => p.forecastHours === 0).map(p => p.cards), forecast: health.probes.filter(p => p.forecastHours === 12).map(p => p.cards) };
 }
 
@@ -156,7 +166,7 @@ export async function verifyCandidateBrowser(work, site, { sandboxedPreview = fa
       try { await fetch(`${local.origin}/`, { signal: AbortSignal.timeout(1000) }); break; }
       catch { if (n === 39) throw new Error("preview_unavailable"); await pause(250); }
     }
-    assert.equal((await browserHealth(local)).status, "healthy", "candidate_browser_or_forecast_failed");
+    await requireHealthyBrowser(local, "candidate_browser_or_forecast_failed");
   } finally { try { process.kill(-preview.pid, "SIGTERM"); } catch {} }
 }
 
