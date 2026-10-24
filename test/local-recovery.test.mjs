@@ -1,8 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decideRecovery, assertChangedFiles, collectionEnvironment, pendingDisposition, hasTerminalCheckFailure, needsBrowserProbe } from "../scripts/local-recovery.mjs";
+import { decideRecovery, assertChangedFiles, collectionEnvironment, pendingDisposition, hasTerminalCheckFailure, needsBrowserProbe, requireHealthyBrowser } from "../scripts/local-recovery.mjs";
 const H = 3_600_000;
 const now = 100 * H;
+test("a transient browser failure retries once, while a repeated failure blocks publication", async () => {
+  const site = { id: "de" };
+  let calls = 0;
+  let waits = 0;
+  const health = await requireHealthyBrowser(site, "candidate_browser_or_forecast_failed", async () => {
+    calls++;
+    if (calls === 1) throw new Error("browser_probe_failed");
+    return { status: "healthy", products: 126 };
+  }, async () => { waits++; });
+  assert.equal(health.products, 126);
+  assert.equal(calls, 2);
+  assert.equal(waits, 1);
+  calls = 0;
+  await assert.rejects(requireHealthyBrowser(site, "candidate_browser_or_forecast_failed", async () => {
+    calls++;
+    return { status: "critical" };
+  }, async () => {}), /candidate_browser_or_forecast_failed/);
+  assert.equal(calls, 2);
+});
 test("local monitor signal rechecks live browser without bypassing recovery limits", () => {
   assert.equal(needsBrowserProbe(true, false, { status: "healthy" }), true);
   assert.equal(needsBrowserProbe(true, false, { status: "critical" }), true);
