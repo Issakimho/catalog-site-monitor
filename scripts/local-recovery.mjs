@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, writeFile, mkdir, realpath, rename, open, access, copyFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
@@ -83,6 +83,18 @@ export function assertRepository(cwd, repository) {
   for (const args of [["--all"], ["--push", "--all"]]) {
     assert.ok(git(cwd, "remote", "get-url", ...args, "origin").split("\n").every(url => allowed.includes(url)), "unexpected_repository");
   }
+}
+
+export async function assertManifestRoot(manifestRoot, config, { manualHost = false } = {}) {
+  if (!manualHost) {
+    assert.equal(await realpath(manifestRoot), await realpath(config.root));
+    return;
+  }
+  // A manual standby host must name the recorded root explicitly. The caller's
+  // real working directory, repository, market and publication allowlist still apply.
+  assert.ok(typeof manifestRoot === "string" && isAbsolute(manifestRoot)
+    && typeof config.manifestRoot === "string" && isAbsolute(config.manifestRoot), "invalid_manual_manifest_root");
+  assert.equal(resolve(manifestRoot), resolve(config.manifestRoot), "unexpected_manifest_root");
 }
 
 async function browserHealth(site) {
@@ -180,7 +192,7 @@ export function needsBrowserProbe(probeBrowser, incident, health) {
   return probeBrowser === true || (incident && health.status === "healthy");
 }
 
-export async function recover(id, { apply = false, force = false, probeBrowser = false, configPath } = {}) {
+export async function recover(id, { apply = false, force = false, probeBrowser = false, configPath, manualHost = false } = {}) {
   const site = sites.find(s => s.id === id && s.id !== "fr");
   assert.ok(site, "unsupported_local_site");
   const settings = await json(configPath ?? join(homedir(), ".codex", "catalog-autonomy", "sites.json"));
@@ -377,7 +389,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
       const base = git(work, "rev-parse", "HEAD");
       let collectorPatch = null;
       const manifest = await json(join(work, "config/variant-manifest.json"));
-      assert.equal(await realpath(manifest.target.root), await realpath(config.root));
+      await assertManifestRoot(manifest.target.root, config, { manualHost });
       const allowed = manifest.operations.catalog.refresh.allowedChangedFiles;
       assert.deepEqual(allowed, [config.demo, `public${site.data}catalog-current.json`, `public${site.data}catalog-manifest.json`]);
       let env;
@@ -560,7 +572,7 @@ export async function recover(id, { apply = false, force = false, probeBrowser =
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const result = await recover(process.argv[2], { apply: process.argv.includes("--run"), force: process.argv.includes("--force"), probeBrowser: process.argv.includes("--probe-browser"), configPath: process.env.CATALOG_RECOVERY_CONFIG });
+    const result = await recover(process.argv[2], { apply: process.argv.includes("--run"), force: process.argv.includes("--force"), probeBrowser: process.argv.includes("--probe-browser"), configPath: process.env.CATALOG_RECOVERY_CONFIG, manualHost: process.argv.includes("--manual-host") });
     console.log(JSON.stringify(result));
     if (result.attentionRequired || ["failed", "retry_limit"].includes(result.decision)) process.exitCode = 1;
   } catch { console.error(JSON.stringify({ site: process.argv[2], decision: "failed", code: "preflight_failed" })); process.exitCode = 1; }

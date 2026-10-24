@@ -1,8 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { decideRecovery, assertChangedFiles, collectionEnvironment, pendingDisposition, hasTerminalCheckFailure, needsBrowserProbe } from "../scripts/local-recovery.mjs";
 const H = 3_600_000;
 const now = 100 * H;
+test("standby-host recovery requires manual opt-in and an exact private manifest-root mapping", async () => {
+  const { assertManifestRoot } = await import("../scripts/local-recovery.mjs");
+  const root = await mkdtemp(join(tmpdir(), "catalog-manual-host-"));
+  const config = { root, manifestRoot: "/recorded-raspberry/catalog/de" };
+  try {
+    await assertManifestRoot(root, config);
+    await assert.rejects(assertManifestRoot(config.manifestRoot, config));
+    await assertManifestRoot(config.manifestRoot, config, { manualHost: true });
+    await assert.rejects(assertManifestRoot("/recorded-raspberry/catalog/es", config, { manualHost: true }), /unexpected_manifest_root/);
+    await assert.rejects(assertManifestRoot(config.manifestRoot, { root }, { manualHost: true }), /invalid_manual_manifest_root/);
+    await assert.rejects(assertManifestRoot("relative/de", { root, manifestRoot: "relative/de" }, { manualHost: true }), /invalid_manual_manifest_root/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 test("local monitor signal rechecks live browser without bypassing recovery limits", () => {
   assert.equal(needsBrowserProbe(true, false, { status: "healthy" }), true);
   assert.equal(needsBrowserProbe(true, false, { status: "critical" }), true);
