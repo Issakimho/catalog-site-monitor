@@ -153,6 +153,20 @@ class Policy(unittest.TestCase):
   self.assertIn('node_modules/sharp',changed)
   self.assertIn('node_modules/source-map-js',changed)
   self.assertIn('node_modules/@img/sharp-linux-arm64',changed)
+ def test_audited_stable_minor_update_passes_without_accepting_major_or_zero_minor(self):
+  before={'packages':{'':{'dependencies':{'undici':'^8.10.0'}},
+    'node_modules/undici':{'version':'8.10.2','resolved':'https://registry.npmjs.org/undici/-/undici-8.10.2.tgz','integrity':'sha512-AA=='}}}
+  after=copy.deepcopy(before)
+  after['packages']['node_modules/undici'].update(version='8.12.3',
+    resolved='https://registry.npmjs.org/undici/-/undici-8.12.3.tgz',integrity='sha512-BB==')
+  self.assertEqual(d.assert_transitive_patch_update(before,after,['undici']),['node_modules/undici'])
+  for version in ('9.0.0','8.9.3'):
+   invalid=copy.deepcopy(after);invalid['packages']['node_modules/undici']['version']=version
+   with self.assertRaises(ValueError):d.assert_transitive_patch_update(before,invalid,['undici'])
+  zero_before=copy.deepcopy(before);zero_after=copy.deepcopy(after)
+  zero_before['packages']['node_modules/undici']['version']='0.35.2'
+  zero_after['packages']['node_modules/undici']['version']='0.36.0'
+  with self.assertRaises(ValueError):d.assert_transitive_patch_update(zero_before,zero_after,['undici'])
  def test_transitive_updates_reject_unrelated_major_downgrade_registry_and_manifest_changes(self):
   fixture=json.loads((Path(__file__).parent/'fixtures/transitive-security-20261006.json').read_text())
   changes=[lambda x:x['packages']['node_modules/astro'].update(version='7.3.3'),
