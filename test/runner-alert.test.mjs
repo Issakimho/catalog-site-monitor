@@ -2,7 +2,8 @@ import test from 'node:test';
 import { execFileSync } from 'node:child_process';
 test('Raspberry alert closes only after verified recovery with no outstanding query', () => {
   execFileSync('python3', ['-c', `
-import importlib.util
+import importlib.util,sys
+sys.path.insert(0, 'scripts')
 spec=importlib.util.spec_from_file_location('runner', 'scripts/raspberry-run-site.py')
 m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 assert m.notification_action(0, {'decision':'healthy','canCloseIncident':True}) == 'retain'
