@@ -1,8 +1,106 @@
 {
-  "checkedAt": "2026-10-23T00:58:35.036Z",
+  "checkedAt": "2026-10-24T05:03:35.615Z",
   "sites": [
     {
       "site": "fr",
+      "status": "healthy",
+      "codes": [],
+      "probes": [
+        {
+          "profile": "drawing",
+          "forecastHours": 0,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "bim",
+          "forecastHours": 0,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        },
+        {
+          "profile": "rendering",
+          "forecastHours": 0,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "drawing",
+          "forecastHours": 12,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "bim",
+          "forecastHours": 12,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        },
+        {
+          "profile": "rendering",
+          "forecastHours": 12,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        }
+      ]
+    },
+    {
+      "site": "us",
+      "status": "healthy",
+      "codes": [],
+      "probes": [
+        {
+          "profile": "drawing",
+          "forecastHours": 0,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "bim",
+          "forecastHours": 0,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        },
+        {
+          "profile": "rendering",
+          "forecastHours": 0,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "drawing",
+          "forecastHours": 12,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        },
+        {
+          "profile": "bim",
+          "forecastHours": 12,
+          "cards": 2,
+          "ctas": 2,
+          "code": "ok"
+        },
+        {
+          "profile": "rendering",
+          "forecastHours": 12,
+          "cards": 3,
+          "ctas": 3,
+          "code": "ok"
+        }
+      ]
+    },
+    {
+      "site": "de",
       "status": "healthy",
       "codes": [],
       "probes": [
@@ -51,113 +149,9 @@
       ]
     },
     {
-      "site": "us",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
-      "probes": [
-        {
-          "profile": "drawing",
-          "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        },
-        {
-          "profile": "bim",
-          "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        },
-        {
-          "profile": "rendering",
-          "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        },
-        {
-          "profile": "drawing",
-          "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        },
-        {
-          "profile": "bim",
-          "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        },
-        {
-          "profile": "rendering",
-          "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        }
-      ]
-    },
-    {
-      "site": "de",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
-      "probes": [
-        {
-          "profile": "drawing",
-          "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        },
-        {
-          "profile": "bim",
-          "forecastHours": 0,
-          "cards": 1,
-          "ctas": 1,
-          "code": "ok"
-        },
-        {
-          "profile": "rendering",
-          "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
-          "code": "ok"
-        },
-        {
-          "profile": "drawing",
-          "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
-          "code": "ok"
-        },
-        {
-          "profile": "bim",
-          "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
-          "code": "ok"
-        },
-        {
-          "profile": "rendering",
-          "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
-          "code": "ok"
-        }
-      ]
-    },
-    {
       "site": "es",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
@@ -205,10 +199,8 @@
     },
     {
       "site": "it",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
