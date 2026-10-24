@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Serialized Raspberry collector. Logs and supplier configuration stay private."""
+from portfolio_lock import acquire_portfolio_lock
 import fcntl
 import json
 import os
@@ -81,7 +82,7 @@ def main():
     directory.mkdir(parents=True, exist_ok=True)
     # Across all sites and manual service starts, one heavy collector at a time.
     with (BASE / 'portfolio.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        acquire_portfolio_lock(lock)
         state_path = directory / 'state.json'
         state = json.loads(state_path.read_text()) if state_path.exists() else {}
         trim_dependencies(directory, state)

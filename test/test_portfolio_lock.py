@@ -20,6 +20,19 @@ CHILD = (
     "print('acquired',flush=True); "
     "signal.pause()"
 )
+RUNNER = """
+import importlib.util, json, pathlib, sys
+folder = pathlib.Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location('collector', sys.argv[2])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+module.BASE = folder
+module.CONFIG = folder / 'sites.json'
+module.CONFIG.write_text(json.dumps({'sites': {'de': {'root': '/home/imho/catalog/de'}}}))
+sys.argv = ['run-site.py', 'de']
+print('ready', flush=True)
+module.main()
+"""
 
 
 class PortfolioLockTest(unittest.TestCase):
@@ -66,6 +79,30 @@ class PortfolioLockTest(unittest.TestCase):
                 if child.poll() is None:
                     child.kill()
                     child.wait()
+
+    def test_collector_entrypoint_handles_cancellation_while_queued(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with open(Path(folder) / "portfolio.lock", "a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                env = {**os.environ, "PYTHONPATH": str(SCRIPTS)}
+                child = subprocess.Popen(
+                    [sys.executable, "-u", "-c", RUNNER, folder, str(SCRIPTS / "raspberry-run-site.py")],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+                )
+                try:
+                    self.assertEqual(child.stdout.readline().strip(), "ready")
+                    time.sleep(0.1)
+                    child.send_signal(signal.SIGTERM)
+                    out, err = child.communicate(timeout=5)
+                    self.assertEqual(child.returncode, 0)
+                    self.assertEqual(json.loads(out), {
+                        "action": "deferred", "reason": "cancelled_while_waiting_for_portfolio"
+                    })
+                    self.assertEqual(err, "")
+                finally:
+                    if child.poll() is None:
+                        child.kill()
+                        child.wait()
 
 
 if __name__ == "__main__":
