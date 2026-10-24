@@ -1,5 +1,5 @@
 """Bounded lifecycle of reviewed dependency backports. No model-generated patches."""
-import copy,hashlib,json,re,subprocess,time
+import copy,datetime as dt,hashlib,json,re,subprocess,time
 from pathlib import Path
 
 PACKAGE='http-cache-semantics'
@@ -83,7 +83,9 @@ def require(ok,message):
     if not ok:raise ValueError(message)
 
 def assert_retirement(before,after,version):
-    require(re.fullmatch(r'4\.2\.[1-9]\d*',version),'unsupported_retirement_version')
+    current=before['config/dependency-patches.json']['patches'][0]['upstreamVersion']
+    require(re.fullmatch(r'4\.\d+\.\d+',version) and re.fullmatch(r'4\.\d+\.\d+',current)
+        and tuple(map(int,version.split('.')))>tuple(map(int,current.split('.'))),'unsupported_retirement_version')
     package=copy.deepcopy(before['package.json'])
     require(package.get('overrides',{}).get(PACKAGE)=='$http-cache-semantics','unexpected_patch_override')
     require(package['dependencies'][PACKAGE]=='file:vendor/http-cache-semantics','unexpected_patch_dependency')
@@ -112,6 +114,42 @@ def assert_retirement(before,after,version):
 
 def can_attempt(state,version):
     return state.get('version')!=version or state.get('attempts',0)<2
+
+def reviewed_patch_manifest(manifest,upstream,security,checked_at):
+    """Renew one immutable, audited backport only after a fresh security review."""
+    result=copy.deepcopy(manifest)
+    require(result.get('schemaVersion')==1 and len(result.get('patches',[]))==1,'unreviewed_patch_recipe')
+    patch=result['patches'][0]
+    require(patch.get('package')==PACKAGE and patch.get('active') is True,'unreviewed_patch_recipe')
+    require(upstream.get('status') in ('attention','expired') and not upstream.get('candidate')
+        and upstream.get('latest')==patch.get('upstreamVersion'),'official_release_needs_review')
+    require(security.get('highOrCritical')=={} and security.get('regressionCases')==54
+        and security.get('remediated')==patch.get('advisories'),'patch_review_evidence_failed')
+    reports=security.get('patches') or []
+    require(len(reports)==1 and reports[0].get('package')==PACKAGE
+        and reports[0].get('expiresAt')==patch.get('expiresAt')
+        and reports[0].get('status') in ('attention','expired'),'patch_review_evidence_failed')
+    require(re.fullmatch(r'[a-f0-9]{64}',security.get('digest',''))
+        and re.fullmatch(r'[a-f0-9]{64}',patch.get('sha256','')),'patch_review_evidence_failed')
+    now=dt.datetime.fromisoformat(checked_at.replace('Z','+00:00'))
+    audited=dt.datetime.fromisoformat(security['checkedAt'].replace('Z','+00:00'))
+    require(now.tzinfo and audited.tzinfo and 0<=(now-audited).total_seconds()<3600,'stale_patch_review')
+    old_start=dt.datetime.fromisoformat(patch['introducedAt'].replace('Z','+00:00'))
+    old_warn=dt.datetime.fromisoformat(patch['warnAt'].replace('Z','+00:00'))
+    old_end=dt.datetime.fromisoformat(patch['expiresAt'].replace('Z','+00:00'))
+    require(old_start<=old_warn<old_end and old_end-old_start<=dt.timedelta(days=21)
+        and now>=old_warn,'patch_review_not_due')
+    start=now.astimezone(dt.timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0)
+    iso=lambda value:value.isoformat(timespec='seconds').replace('+00:00','Z')
+    patch.setdefault('firstIntroducedAt',patch['introducedAt'])
+    history=patch.setdefault('reviewHistory',[])
+    require(isinstance(history,list) and len(history)<100,'invalid_patch_review_history')
+    history.append({'checkedAt':checked_at,'previousExpiresAt':patch['expiresAt'],
+        'upstreamVersion':upstream['latest'],'vendorSha256':patch['sha256'],
+        'auditDigest':security['digest'],'regressionCases':security['regressionCases']})
+    patch.update(introducedAt=iso(start),warnAt=iso(start+dt.timedelta(days=14)),
+        expiresAt=iso(start+dt.timedelta(days=21)))
+    return result
 
 def audit_snapshot(site,sha,m):
     root=m.fresh_root(site,sha);folder=m.BASE/site
@@ -143,9 +181,12 @@ def audit_snapshot(site,sha,m):
 
 def poll_retirement(site,observed,state,m):
     work=Path(state['workspace']);base=state['base'];version=state['version']
+    review=state.get('kind')=='review'
+    allowed=['config/dependency-patches.json'] if review else FILES
     require(work.resolve().parent==(m.BASE/site).resolve() and work.name.startswith('attempt-'),'untrusted_retirement_workspace')
     require(m.git(work,'rev-parse','HEAD')==state['head'],'retirement_head_changed')
     require(not m.git(work,'status','--porcelain'),'dirty_retirement_candidate')
+    if review:m.boundary(work,base,allowed)
     if state['phase']=='publishing':
         prs=m.api(f'repos/{m.repo(site)}/pulls?state=all&head=Issakimho:{state["branch"]}&base=main')
         if prs:
@@ -154,8 +195,13 @@ def poll_retirement(site,observed,state,m):
         else:
             m.git(work,'push','origin',state['head']+':refs/heads/'+state['branch'])
             body=m.BASE/site/'dependency-retirement-pr.md'
-            body.write_text(f'Replace the temporary cache-security backport with official {PACKAGE} {version}. The original security regression tests, all site gates and candidate browser journeys pass. Catalog bytes and all other dependency versions remain unchanged.\n')
-            pr=m.run(['gh','pr','create','--repo',m.repo(site),'--base','main','--head',state['branch'],'--title',f'fix(security): retire cache backport with {version}','--body-file',str(body)],cwd=work).stdout.strip()
+            if review:
+                body.write_text(f'Review the unchanged {PACKAGE} backport against upstream {state["upstreamVersion"]}. Fresh dependency audit and {state["regressionCases"]} cache regressions pass. Vendor bytes and catalog data are unchanged. New review deadline: {state["reviewExpiresAt"]}.\n')
+                title=f'fix(security): review cache backport through {state["reviewExpiresAt"][:10]}'
+            else:
+                body.write_text(f'Replace the temporary cache-security backport with official {PACKAGE} {version}. The original security regression tests, all site gates and candidate browser journeys pass. Catalog bytes and all other dependency versions remain unchanged.\n')
+                title=f'fix(security): retire cache backport with {version}'
+            pr=m.run(['gh','pr','create','--repo',m.repo(site),'--base','main','--head',state['branch'],'--title',title,'--body-file',str(body)],cwd=work).stdout.strip()
             require(re.fullmatch(r'https://github.com/'+re.escape(m.repo(site))+r'/pull/\d+',pr),'retirement_pr_not_confirmed')
             state['prNumber']=int(pr.rsplit('/',1)[1]);state['prUrl']=pr
         state['phase']='pr_checks';m.save(m.BASE/site/'dependency-retirement.json',state)
@@ -172,6 +218,13 @@ def poll_retirement(site,observed,state,m):
         if not ci or not checks or not all(r['status']=='completed' and r['conclusion']=='success' for r in ci) or not all(c['status']=='completed' for c in checks) or any(s['state']=='pending' for s in statuses):
             return {'site':site,'action':'dependency_retirement_pending_ci','prUrl':state['prUrl']}
         # A stale catalog cannot be carried through a delayed security PR.
+        if review:
+            current=json.loads(m.run(['node','scripts/dependency-patches.mjs','upstream'],cwd=work,timeout=180).stdout)
+            require(len(current)==1 and not current[0].get('candidate')
+                and current[0].get('latest')==state['upstreamVersion'],'official_release_needs_review')
+            audited=json.loads(m.run(['node','scripts/dependency-patches.mjs','audit'],cwd=work,timeout=240).stdout)
+            require(audited.get('highOrCritical')=={} and audited.get('regressionCases')==state['regressionCases'],
+                'new_advisory_blocks_review')
         m.browser('candidate',site,work)
         require(m.api(f'repos/{m.repo(site)}/commits/main')['sha']==base,'retirement_base_advanced')
         result=json.loads(m.run(['gh','api',f'repos/{m.repo(site)}/pulls/{state["prNumber"]}/merge','--method','PUT','-f','merge_method=squash','-f','sha='+state['head']]).stdout)
@@ -181,7 +234,8 @@ def poll_retirement(site,observed,state,m):
     proof=m.verify_publication(site,{'publishedSha':sha,'workspace':str(work)})
     state.update(phase='resolved',proof=proof,resolvedAt=m.now());m.save(m.BASE/site/'dependency-retirement.json',state)
     m.notify('dependency-'+site)
-    return {'site':site,'action':'dependency_patch_retired','sha':sha,'prUrl':state['prUrl']}
+    return {'site':site,'action':'dependency_patch_reviewed' if review else 'dependency_patch_retired',
+        'sha':sha,'prUrl':state['prUrl']}
 
 def handle(site,observed,security,m,check_only=False):
     path=m.BASE/site/'dependency-retirement.json';state=m.load(path,{})
@@ -196,7 +250,35 @@ def handle(site,observed,security,m,check_only=False):
         if not info:return None
         p=info[0]
         if p['status'] in ('attention','expired') and not p.get('candidate'):
-            m.notify('dependency-'+site,{'reason':'temporary_patch_'+p['status'],'attempts':state.get('attempts',0),'diagnosis':'Version officielle disponible : '+p['latest']+'. Échéance fixe : '+p['expiresAt']})
+            if check_only:return {'site':site,'action':'dependency_patch_review_due'}
+            key='review:'+p['expiresAt']
+            if not can_attempt(state,key):
+                m.notify('dependency-'+site,{'reason':state.get('reason','patch_review_attempt_limit'),
+                    'attempts':state.get('attempts',0),'diagnosis':'Révision automatique du correctif impossible avant '+p['expiresAt']})
+                return {'site':site,'action':'dependency_patch_review_needs_attention','reason':state.get('reason')}
+            attempts=state.get('attempts',0) if state.get('version')==key else 0
+            state={'kind':'review','version':key,'upstreamVersion':p['latest'],
+                'attempts':attempts+1,'phase':'validating','base':observed['sha'],'startedAt':m.now()}
+            m.save(path,state)
+            candidate=m.new_workspace(site,observed['sha'])
+            state['workspace']=str(candidate);m.save(path,state)
+            manifest=m.load(candidate/'config/dependency-patches.json')
+            updated=reviewed_patch_manifest(manifest,p,security,m.now())
+            m.save(candidate/'config/dependency-patches.json',updated)
+            state.update(reviewExpiresAt=updated['patches'][0]['expiresAt'],regressionCases=security['regressionCases'])
+            m.save(path,state)
+            m.boundary(candidate,observed['sha'],['config/dependency-patches.json'])
+            ok,detail=m.validate(site,candidate,observed['sha'],m.BASE/site/'dependency-review-validation.log')
+            require(ok,'review_validation_failed')
+            m.boundary(candidate,observed['sha'],['config/dependency-patches.json'])
+            m.browser('candidate',site,candidate)
+            branch=f'codex/dependency-review-{site}-{time.time_ns()}'
+            m.git(candidate,'checkout','-b',branch)
+            m.git(candidate,'add','--','config/dependency-patches.json')
+            m.git(candidate,'commit','-m',f'fix(security): revalidate temporary cache backport through {state["reviewExpiresAt"][:10]}')
+            state.update(phase='publishing',head=m.git(candidate,'rev-parse','HEAD'),branch=branch)
+            m.save(path,state)
+            return poll_retirement(site,observed,state,m)
         elif p['status']=='active' and not p.get('candidate') and state.get('phase')!='needs_attention':
             # A renewed patch supersedes an earlier deadline alert. The daily
             # watcher will open a new alert when the next deadline approaches.
@@ -223,10 +305,19 @@ def handle(site,observed,security,m,check_only=False):
         return poll_retirement(site,observed,state,m)
     except m.Deferred:raise
     except Exception as error:
-        phase = state.get('phase') if state.get('phase') in ('publishing','pr_checks','verify') and not isinstance(error,ValueError) else ('needs_attention' if state.get('attempts',0)>=2 or isinstance(error,ValueError) and state.get('phase') in ('pr_checks','verify') else 'retry_next_check')
+        if state.get('kind')=='review' and str(error)=='retirement_base_advanced' and state.get('prNumber'):
+            closed=m.run(['gh','pr','close',str(state['prNumber']),'--repo',m.repo(site)],
+                cwd=Path(state['workspace']),allow_failure=True)
+            phase='retry_next_check' if closed.returncode==0 and state.get('attempts',0)<2 else 'needs_attention'
+        else:
+            phase = state.get('phase') if state.get('phase') in ('publishing','pr_checks','verify') and not isinstance(error,ValueError) else ('needs_attention' if state.get('attempts',0)>=2 or isinstance(error,ValueError) and state.get('phase') in ('pr_checks','verify') else 'retry_next_check')
         state.update(phase=phase,reason=str(error)[:180],failedAt=m.now())
-        m.save(path,state);m.notify('dependency-'+site,state)
-        return {'site':site,'action':'dependency_retirement_needs_attention','reason':state['reason']}
+        m.save(path,state)
+        if state.get('kind')!='review' or phase=='needs_attention':m.notify('dependency-'+site,state)
+        if state.get('kind')=='review':
+            action='dependency_patch_review_needs_attention' if phase=='needs_attention' else 'dependency_patch_review_retry_next_check'
+        else:action='dependency_retirement_needs_attention'
+        return {'site':site,'action':action,'reason':state['reason']}
 
 
 def renew_dependency_budget(incident,advisories,sha,now):
