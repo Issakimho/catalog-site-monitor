@@ -1,10 +1,109 @@
 import copy,json,sys,unittest,tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch as mock_patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import dependency_maintenance as d
 
 class Policy(unittest.TestCase):
+ def test_due_review_creates_manifest_only_candidate_without_model_calls(self):
+  with tempfile.TemporaryDirectory() as folder:
+   base=Path(folder);work=base/'de/attempt-review';work.mkdir(parents=True)
+   patch={'package':d.PACKAGE,'active':True,'upstreamVersion':'4.3.0',
+     'introducedAt':'2026-10-24T00:00:00Z','warnAt':'2026-10-31T00:00:00Z',
+     'expiresAt':'2026-11-14T00:00:00Z','sha256':'a'*64,'advisories':['advisory']}
+   manifest=work/'config/dependency-patches.json';manifest.parent.mkdir();manifest.write_text(json.dumps({'schemaVersion':1,'patches':[patch]}))
+   security={'workspace':str(work),'checkedAt':'2026-10-31T00:17:00Z','digest':'b'*64,
+     'highOrCritical':{},'regressionCases':54,'remediated':['advisory'],
+     'patches':[{'package':d.PACKAGE,'status':'attention','expiresAt':patch['expiresAt']}]}
+   calls=[]
+   def load(path,default=None):return json.loads(path.read_text()) if path.exists() else default
+   def save(path,value):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(value))
+   def git(work,*args):calls.append(('git',args));return 'head' if args==('rev-parse','HEAD') else ''
+   m=SimpleNamespace(BASE=base,load=load,save=save,
+     run=lambda args,**kw:SimpleNamespace(stdout=json.dumps([{'status':'attention','candidate':None,'latest':'4.3.0','expiresAt':patch['expiresAt']}])) ,
+     now=lambda:'2026-10-31T00:18:00Z',new_workspace=lambda *a:work,
+     boundary=lambda w,b,paths:calls.append(('boundary',paths)),
+     validate=lambda *a:(True,''),browser=lambda *a:calls.append(('browser',)),
+     git=git,Deferred=type('Deferred',(Exception,),{}))
+   with mock_patch.object(d,'poll_retirement',side_effect=lambda s,o,state,m:state):
+    state=d.handle('de',{'sha':'base'},security,m)
+   self.assertEqual(state['kind'],'review')
+   self.assertEqual(state['phase'],'publishing')
+   self.assertEqual(load(manifest)['patches'][0]['expiresAt'],'2026-11-21T00:00:00Z')
+   self.assertEqual([item[1] for item in calls if item[0]=='boundary'],
+     [['config/dependency-patches.json'],['config/dependency-patches.json']])
+ def test_review_window_needs_fresh_unchanged_patch_evidence(self):
+  patch={'package':d.PACKAGE,'active':True,'upstreamVersion':'4.3.0',
+    'introducedAt':'2026-10-24T00:00:00Z','warnAt':'2026-10-31T00:00:00Z',
+    'expiresAt':'2026-11-14T00:00:00Z','sha256':'a'*64,'advisories':['advisory']}
+  manifest={'schemaVersion':1,'patches':[patch]}
+  upstream={'status':'attention','candidate':None,'latest':'4.3.0'}
+  security={'checkedAt':'2026-10-31T00:17:00Z','digest':'b'*64,'highOrCritical':{},
+    'regressionCases':54,'remediated':['advisory'],
+    'patches':[{'package':d.PACKAGE,'status':'attention','expiresAt':patch['expiresAt']}]}
+  reviewed=d.reviewed_patch_manifest(manifest,upstream,security,'2026-10-31T00:18:00Z')
+  changed=reviewed['patches'][0]
+  self.assertEqual((changed['introducedAt'],changed['warnAt'],changed['expiresAt']),
+    ('2026-10-31T00:00:00Z','2026-11-14T00:00:00Z','2026-11-21T00:00:00Z'))
+  self.assertEqual(changed['firstIntroducedAt'],patch['introducedAt'])
+  self.assertEqual(changed['reviewHistory'][0]['auditDigest'],'b'*64)
+  self.assertEqual(manifest['patches'][0],patch)
+  for bad_upstream,bad_security,now in [
+    ({**upstream,'candidate':'4.3.1'},security,'2026-10-31T00:18:00Z'),
+    (upstream,{**security,'highOrCritical':{'new':{}}},'2026-10-31T00:18:00Z'),
+    (upstream,{**security,'checkedAt':'2026-10-30T20:00:00Z'},'2026-10-31T00:18:00Z'),
+    (upstream,security,'2026-10-30T23:59:00Z')]:
+   with self.assertRaises(ValueError):d.reviewed_patch_manifest(manifest,bad_upstream,bad_security,now)
+
+ def test_review_pr_rechecks_upstream_and_audit_before_merge(self):
+  for mode in ('safe','new_release','new_advisory'):
+   with tempfile.TemporaryDirectory() as folder:
+    base=Path(folder);work=base/'de/attempt-review';work.mkdir(parents=True)
+    state={'kind':'review','phase':'pr_checks','workspace':str(work),'base':'base',
+      'head':'head','version':'review:2026-11-14','upstreamVersion':'4.3.0',
+      'regressionCases':54,'reviewExpiresAt':'2026-11-21T00:00:00Z',
+      'prNumber':1,'prUrl':'https://github.com/owner/repo/pull/1'}
+    calls=[]
+    def api(path):
+     if '/pulls/' in path:return {'head':{'sha':'head'},'base':{'sha':'base'},'state':'open','merged':False}
+     if path.endswith('/commits/main'):return {'sha':'base'}
+     if '/check-runs?' in path:return {'check_runs':[{'status':'completed','conclusion':'success'}]}
+     if '/actions/runs?' in path:return {'workflow_runs':[{'path':'.github/workflows/ci.yml','status':'completed','conclusion':'success'}]}
+     if path.endswith('/status'):return {'statuses':[{'state':'success'}]}
+     raise AssertionError(path)
+    def run(args,**kw):
+     if args[-1]=='upstream':return SimpleNamespace(stdout=json.dumps([{'latest':'4.3.0','candidate':'4.3.1' if mode=='new_release' else None}]))
+     if args[-1]=='audit':return SimpleNamespace(stdout=json.dumps({'highOrCritical':{'new':{}} if mode=='new_advisory' else {},'regressionCases':54}))
+     calls.append('merge');return SimpleNamespace(stdout=json.dumps({'merged':True,'sha':'merged'}))
+    m=SimpleNamespace(BASE=base,git=lambda w,*args:'head' if args==('rev-parse','HEAD') else '',
+      api=api,repo=lambda s:'owner/repo',run=run,save=lambda *a:None,
+      boundary=lambda *a:calls.append('boundary'),browser=lambda *a:calls.append('browser'),
+      verify_publication=lambda *a:{'healthy':True},notify=lambda *a:calls.append('notify'),now=lambda:'now')
+    if mode=='safe':
+     self.assertEqual(d.poll_retirement('de',{'sha':'base'},state,m)['action'],'dependency_patch_reviewed')
+     self.assertEqual(calls.count('merge'),1)
+    else:
+     with self.assertRaises(ValueError):d.poll_retirement('de',{'sha':'base'},state,m)
+     self.assertNotIn('merge',calls)
+ def test_superseded_review_pr_closes_and_retries_once(self):
+  with tempfile.TemporaryDirectory() as folder:
+   base=Path(folder);work=base/'de/attempt-review';work.mkdir(parents=True)
+   state={'kind':'review','phase':'pr_checks','workspace':str(work),'base':'base',
+     'head':'head','version':'review:2026-11-14','attempts':1,'prNumber':1}
+   record=[]
+   def load(path,default=None):return state if path.name=='dependency-retirement.json' else default
+   m=SimpleNamespace(BASE=base,load=load,save=lambda *a:None,
+     run=lambda args,**kw:(record.append(args),SimpleNamespace(returncode=0))[1],
+     repo=lambda s:'owner/repo',now=lambda:'now',notify=lambda *a:record.append('notify'),
+     Deferred=type('Deferred',(Exception,),{}))
+   with mock_patch.object(d,'poll_retirement',side_effect=ValueError('retirement_base_advanced')):
+    result=d.handle('de',{'sha':'advanced'},{},m)
+   self.assertEqual(result['action'],'dependency_patch_review_retry_next_check')
+   self.assertEqual(result['reason'],'retirement_base_advanced')
+   self.assertEqual(state['phase'],'retry_next_check')
+   self.assertEqual(record[0][:3],['gh','pr','close'])
+   self.assertNotIn('notify',record)
  def test_renewed_patch_closes_old_deadline_alert_without_hiding_retirement_failure(self):
   with tempfile.TemporaryDirectory() as folder:
    notifications=[]
@@ -22,8 +121,8 @@ class Policy(unittest.TestCase):
    self.assertEqual(notifications,[])
    state.clear()
    upstream['status']='attention'
-   self.assertIsNone(d.handle('de',{'sha':'head'},evidence,m))
-   self.assertEqual(notifications[0][1]['reason'],'temporary_patch_attention')
+   self.assertEqual(d.handle('de',{'sha':'head'},evidence,m,check_only=True)['action'],'dependency_patch_review_due')
+   self.assertEqual(notifications,[])
    notifications.clear()
    upstream.update(status='active',candidate='4.4.0')
    self.assertIsNone(d.handle('de',{'sha':'head'},evidence,m,check_only=True))
@@ -72,7 +171,7 @@ class Policy(unittest.TestCase):
    with self.assertRaises(ValueError):d.compatible_transitive_targets(advisories)
  def fixture(self):
   pkg={'dependencies':{d.PACKAGE:'file:vendor/'+d.PACKAGE,'astro':'^7.0.7'},'overrides':{d.PACKAGE:'$'+d.PACKAGE},'scripts':{'test':'trusted'}}
-  patch={'active':True,'package':d.PACKAGE,'expiresAt':'2026-10-24T00:00:00Z','sha256':'pinned'}
+  patch={'active':True,'package':d.PACKAGE,'upstreamVersion':'4.2.0','expiresAt':'2026-10-24T00:00:00Z','sha256':'pinned'}
   lock={'packages':{'':{'dependencies':copy.deepcopy(pkg['dependencies'])},'node_modules/'+d.PACKAGE:{'resolved':'vendor/'+d.PACKAGE,'link':True},'vendor/'+d.PACKAGE:{'version':'4.2.0'},'node_modules/astro':{'version':'7.3.2'}}}
   before={'package.json':pkg,'package-lock.json':lock,'config/dependency-patches.json':{'patches':[patch]}}
   after=copy.deepcopy(before);p=after['package.json'];del p['overrides'];p['dependencies'][d.PACKAGE]='4.2.1'
@@ -87,6 +186,16 @@ class Policy(unittest.TestCase):
   for mutate in mutations:
    changed=copy.deepcopy(after);mutate(changed)
    with self.assertRaises(ValueError):d.assert_retirement(before,changed,'4.2.1')
+  before,after=self.fixture()
+  before['config/dependency-patches.json']['patches'][0]['upstreamVersion']='4.3.0'
+  after['config/dependency-patches.json']['patches'][0]['upstreamVersion']='4.3.0'
+  after['config/dependency-patches.json']['patches'][0]['replacedBy']='4.3.1'
+  after['package.json']['dependencies'][d.PACKAGE]='4.3.1'
+  after['package-lock.json']['packages']['']['dependencies'][d.PACKAGE]='4.3.1'
+  after['package-lock.json']['packages']['node_modules/'+d.PACKAGE].update(
+    version='4.3.1',resolved='https://registry.npmjs.org/http-cache-semantics/-/http-cache-semantics-4.3.1.tgz')
+  d.assert_retirement(before,after,'4.3.1')
+  with self.assertRaises(ValueError):d.assert_retirement(before,after,'4.3.0')
  def test_two_attempts_per_official_version(self):
   self.assertTrue(d.can_attempt({},'4.2.1'));self.assertTrue(d.can_attempt({'version':'4.2.1','attempts':1},'4.2.1'))
   self.assertFalse(d.can_attempt({'version':'4.2.1','attempts':2},'4.2.1'))
