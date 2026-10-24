@@ -5,6 +5,29 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import dependency_maintenance as d
 
 class Policy(unittest.TestCase):
+ def test_renewed_patch_closes_old_deadline_alert_without_hiding_retirement_failure(self):
+  with tempfile.TemporaryDirectory() as folder:
+   notifications=[]
+   state={}
+   upstream={'status':'active','latest':'4.3.0','expiresAt':'2026-11-14T00:00:00Z'}
+   m=SimpleNamespace(BASE=Path(folder),load=lambda p,default=None: state if p.name=='dependency-retirement.json' else default,
+     save=lambda *a:None,run=lambda *a,**kw: SimpleNamespace(stdout=json.dumps([upstream])),
+     now=lambda:'now',notify=lambda *a:notifications.append(a))
+   evidence={'workspace':folder,'highOrCritical':{}}
+   self.assertIsNone(d.handle('de',{'sha':'head'},evidence,m))
+   self.assertEqual(notifications,[('dependency-de',)])
+   notifications.clear()
+   state['phase']='needs_attention'
+   self.assertIsNone(d.handle('de',{'sha':'head'},evidence,m))
+   self.assertEqual(notifications,[])
+   state.clear()
+   upstream['status']='attention'
+   self.assertIsNone(d.handle('de',{'sha':'head'},evidence,m))
+   self.assertEqual(notifications[0][1]['reason'],'temporary_patch_attention')
+   notifications.clear()
+   upstream.update(status='active',candidate='4.4.0')
+   self.assertIsNone(d.handle('de',{'sha':'head'},evidence,m,check_only=True))
+   self.assertEqual(notifications,[])
  def test_nameless_italian_project_preserves_directory_derived_lock_name(self):
   fixture=json.loads((Path(__file__).parent/'fixtures/transitive-security-20261006.json').read_text())
   with tempfile.TemporaryDirectory() as folder:
