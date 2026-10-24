@@ -197,6 +197,10 @@ def handle(site,observed,security,m,check_only=False):
         p=info[0]
         if p['status'] in ('attention','expired') and not p.get('candidate'):
             m.notify('dependency-'+site,{'reason':'temporary_patch_'+p['status'],'attempts':state.get('attempts',0),'diagnosis':'Version officielle disponible : '+p['latest']+'. Échéance fixe : '+p['expiresAt']})
+        elif p['status']=='active' and not p.get('candidate') and state.get('phase')!='needs_attention':
+            # A renewed patch supersedes an earlier deadline alert. The daily
+            # watcher will open a new alert when the next deadline approaches.
+            m.notify('dependency-'+site)
         version=p.get('candidate')
         if not version or check_only:return None
         if not can_attempt(state,version):return {'site':site,'action':'dependency_retirement_needs_attention','reason':state.get('reason')}
