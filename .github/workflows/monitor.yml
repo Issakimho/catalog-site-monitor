@@ -47,6 +47,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Test monitor policies
         run: npm test
+      - name: Test Raspberry portfolio lock
+        run: python3 -m unittest discover -s test -p 'test_*.py'
       - name: Check public snapshots and browser journeys
         run: npm run check
       - name: Reconcile incidents and record daily checks
