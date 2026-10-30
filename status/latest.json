@@ -1,10 +1,12 @@
 {
-  "checkedAt": "2026-10-29T03:54:14.429Z",
+  "checkedAt": "2026-10-30T00:25:31.963Z",
   "sites": [
     {
       "site": "fr",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "snapshot_overdue"
+      ],
       "probes": [
         {
           "profile": "drawing",
@@ -86,8 +88,8 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -121,8 +123,8 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -191,8 +193,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
