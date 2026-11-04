@@ -1,12 +1,10 @@
 {
-  "checkedAt": "2026-11-03T00:00:12.780Z",
+  "checkedAt": "2026-11-04T03:51:26.132Z",
   "sites": [
     {
       "site": "fr",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
@@ -18,8 +16,8 @@
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -39,8 +37,8 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -109,8 +107,8 @@
         {
           "profile": "drawing",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -123,15 +121,15 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -144,8 +142,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         }
       ]
