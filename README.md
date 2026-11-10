@@ -100,7 +100,7 @@ an exact three-file publication allowlist and a concurrent-commit check.
 Two collection attempts per rolling twenty-four hours and a two-hour cooldown
 bound failures. A deployment awaiting confirmation is rechecked before any new
 collection. A rejected or superseded push, or a completed failed CI run, clears that pending reference without
-discarding the candidate or retry budget. Success requires GitHub CI, a successful Vercel status for the exact
+discarding the candidate or retry budget. Success requires GitHub CI, a successful configured hosting status for the exact
 commit, byte-identical public catalog files and healthy browser journeys.
 The public monitor then closes the incident after its own checks. Revoked provider
 access and an unavailable Raspberry still require intervention.
@@ -157,7 +157,7 @@ was migrated to the Raspberry on 14 September 2026 after a successful pilot:
 task is paused. Codex reviews only product data in a read-only sandbox, using
 the ChatGPT subscription. A fixed private controller owns Git, the six-file
 allowlist, local tests, exact-SHA trusted workflow validation and publication.
-Success requires a Vercel deployment for that SHA, byte-identical public catalog
+Success requires a deployment on the configured production host for that SHA, byte-identical public catalog
 files and healthy browser journeys. An empty review queue makes no Codex call.
 The active private FR and variant enrichment runners use `gpt-6.1-sol` with
 `medium` reasoning, as does maintenance diagnosis. Existing bounded product
@@ -341,3 +341,13 @@ The five sites use a reviewed, source-pinned backport for GHSA-ch52-4w7c-c8xp un
 The patch warns after seven days and blocks publication after 21 days. The observer continues checking upstream after expiry. Deadlines and catalog dates are never refreshed to make checks green. A new compatible registry fix can reopen a previously exhausted dependency incident once per distinct candidate; breaking downgrades and repeated evidence cannot reset its budget. Unknown vulnerabilities and unpublished patches require a separately reviewed recipe with regression evidence; this system does not automatically trust arbitrary upstream PRs.
 
 The maintenance runner can also call `update_compatible_transitives` for findings where npm explicitly reports an in-range fix. It updates only the lockfile, without adding direct dependencies or running install scripts. The guard requires forward patch releases in the existing dependency closure, registry URLs and integrity hashes, unchanged package identities and execution contracts, and unchanged manifest bytes. The real October 6 `sharp` and `source-map-js` incident is a regression fixture, including the ARM64 image packages. Unsupported graph changes stop the repair. Existing publication, security, CI and browser gates still decide whether the candidate can be published. `renew_transitive_policy_budget` permits an old out-of-scope incident to use this new capability once, with two attempts; later timer runs cannot renew that budget again.
+
+## Hosting migration verification
+
+Publication follows `config/cloudflare.json` in the exact candidate checkout.
+`migration.productionProvider` selects the required GitHub commit-status context:
+`Vercel` while a site is still served by Vercel, and `Cloudflare` after DNS cutover.
+A successful staging deployment cannot substitute for the current production
+host. Sites without this configuration retain the Vercel contract. Unknown
+providers stop verification. Exact live catalog bytes and the current and
+12-hour browser journeys remain mandatory.
