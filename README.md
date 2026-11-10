@@ -302,7 +302,9 @@ this entry point together with `local-recovery.mjs`; retain the existing systemd
 timers and portfolio lock. `npm test` includes the Python notification policy.
 
 Each variant also runs `audit:catalog-forecast` in `verify:publication`, including
-manual/CI/Vercel publication. It verifies snapshot integrity, the existing minimum
+manual validation and GitHub CI before production publication. The active provider
+is read from `config/cloudflare.json`; the five migrated sites require the `Cloudflare`
+status. The forecast audit verifies snapshot integrity, the existing minimum
 of 20 fresh products, and three recommendation profiles with merchant offers now
 and at +12 hours, using that market's eligibility rules.
 
