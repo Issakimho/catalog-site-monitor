@@ -8,6 +8,7 @@ import { homedir } from "node:os";
 import { createServer } from "node:net";
 import { pathToFileURL } from "node:url";
 import { sites } from "../config/sites.mjs";
+import { readDeploymentContext, successfulDeployment } from "./deployment-contract.mjs";
 import { fetchBytes, inspectSnapshot, checkSite, browserEnvironment, browserLaunchOptions } from "./check.mjs";
 import { mayAttemptRepair, parseEngineFailure, repairFingerprint, REPAIR_POLICY_VERSION } from "./engine-repair-policy.mjs";
 import { runEngineAutoRepair, resumeEngineAutoRepair } from "./engine-auto-repair.mjs";
@@ -142,7 +143,8 @@ export async function verifyProduction(config, site, sha, work) {
   const checks = gh(`repos/${config.repository}/commits/${sha}/check-runs`).check_runs;
   const status = gh(`repos/${config.repository}/commits/${sha}/status`);
   assert.ok(checks.length > 0 && checks.every(r => r.status === "completed" && ["success", "skipped", "neutral"].includes(r.conclusion)), "ci_pending_or_failed");
-  assert.ok(status.statuses.some(s => s.context === "Vercel" && s.state === "success"), "deployment_pending_or_failed");
+  const deploymentContext = await readDeploymentContext(work);
+  assert.ok(successfulDeployment(status.statuses, deploymentContext), "deployment_pending_or_failed");
   for (const name of ["catalog-current.json", "catalog-manifest.json"]) {
     assert.deepEqual(await fetchBytes(`${site.origin}${site.data}${name}`), await readFile(join(work, "public", site.data, name)), "live_snapshot_mismatch");
   }
