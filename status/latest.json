@@ -1,12 +1,10 @@
 {
-  "checkedAt": "2026-11-11T02:16:22.830Z",
+  "checkedAt": "2026-11-12T01:01:36.655Z",
   "sites": [
     {
       "site": "fr",
-      "status": "warning",
-      "codes": [
-        "snapshot_overdue"
-      ],
+      "status": "healthy",
+      "codes": [],
       "probes": [
         {
           "profile": "drawing",
