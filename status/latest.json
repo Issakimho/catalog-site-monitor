@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-11-14T03:52:34.722Z",
+  "checkedAt": "2026-11-15T02:08:55.004Z",
   "sites": [
     {
       "site": "fr",
@@ -72,15 +72,15 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -93,8 +93,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
@@ -128,8 +128,8 @@
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 3,
+          "ctas": 3,
           "code": "ok"
         },
         {
@@ -150,8 +150,12 @@
     },
     {
       "site": "es",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "snapshot_overdue",
+        "freshness_risk_12h",
+        "quiz_risk_12h"
+      ],
       "probes": [
         {
           "profile": "drawing",
@@ -170,30 +174,30 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
           "profile": "drawing",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
-          "code": "ok"
+          "cards": 0,
+          "ctas": 0,
+          "code": "no_recommendations"
         },
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
-          "code": "ok"
+          "cards": 0,
+          "ctas": 0,
+          "code": "no_recommendations"
         },
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
-          "code": "ok"
+          "cards": 0,
+          "ctas": 0,
+          "code": "no_recommendations"
         }
       ]
     },
@@ -233,8 +237,8 @@
         {
           "profile": "bim",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
