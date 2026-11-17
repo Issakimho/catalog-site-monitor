@@ -127,8 +127,8 @@ def reviewed_patch_manifest(manifest,upstream,security,checked_at):
     require(upstream.get('status') in ('attention','expired') and not upstream.get('candidate')
         and upstream.get('latest')==patch.get('upstreamVersion'),'official_release_needs_review')
     require(security.get('highOrCritical')=={} and security.get('regressionCases')==54
-        and security.get('remediated')==patch.get('advisories'),'patch_review_evidence_failed')
-    reports=security.get('patches') or []
+        and all(a in security.get('remediated',[]) for a in patch.get('advisories',[])),'patch_review_evidence_failed')
+    reports=[p for p in security.get('patches',[]) if p.get('package')==PACKAGE]
     require(len(reports)==1 and reports[0].get('package')==PACKAGE
         and reports[0].get('expiresAt')==patch.get('expiresAt')
         and reports[0].get('status') in ('attention','expired'),'patch_review_evidence_failed')
@@ -185,14 +185,15 @@ def audit_snapshot(site,sha,m):
     m.save(folder/'dependency-audit.json',report)
     return report
 
-def poll_retirement(site,observed,state,m):
+def poll_retirement(site,observed,state,m,state_file='dependency-retirement.json',before_merge=None):
     work=Path(state['workspace']);base=state['base'];version=state['version']
     review=state.get('kind')=='review'
-    allowed=['config/dependency-patches.json'] if review else FILES
+    glob=state_file==GLOB_STATE
+    allowed=state['allowed'] if glob else (['config/dependency-patches.json'] if review else FILES)
     require(work.resolve().parent==(m.BASE/site).resolve() and work.name.startswith('attempt-'),'untrusted_retirement_workspace')
     require(m.git(work,'rev-parse','HEAD')==state['head'],'retirement_head_changed')
     require(not m.git(work,'status','--porcelain'),'dirty_retirement_candidate')
-    if review:m.boundary(work,base,allowed)
+    if review or glob:m.boundary(work,base,allowed)
     if state['phase']=='publishing':
         prs=m.api(f'repos/{m.repo(site)}/pulls?state=all&head=Issakimho:{state["branch"]}&base=main')
         if prs:
@@ -201,7 +202,10 @@ def poll_retirement(site,observed,state,m):
         else:
             m.git(work,'push','origin',state['head']+':refs/heads/'+state['branch'])
             body=m.BASE/site/'dependency-retirement-pr.md'
-            if review:
+            if glob:
+                title,description=glob_pull_request(state)
+                body.write_text(description+'\n')
+            elif review:
                 body.write_text(f'Review the unchanged {PACKAGE} backport against upstream {state["upstreamVersion"]}. Fresh dependency audit and {state["regressionCases"]} cache regressions pass. Vendor bytes and catalog data are unchanged. New review deadline: {state["reviewExpiresAt"]}.\n')
                 title=f'fix(security): review cache backport through {state["reviewExpiresAt"][:10]}'
             else:
@@ -210,7 +214,7 @@ def poll_retirement(site,observed,state,m):
             pr=m.run(['gh','pr','create','--repo',m.repo(site),'--base','main','--head',state['branch'],'--title',title,'--body-file',str(body)],cwd=work).stdout.strip()
             require(re.fullmatch(r'https://github.com/'+re.escape(m.repo(site))+r'/pull/\d+',pr),'retirement_pr_not_confirmed')
             state['prNumber']=int(pr.rsplit('/',1)[1]);state['prUrl']=pr
-        state['phase']='pr_checks';m.save(m.BASE/site/'dependency-retirement.json',state)
+        state['phase']='pr_checks';m.save(m.BASE/site/state_file,state)
     pr=m.api(f'repos/{m.repo(site)}/pulls/{state["prNumber"]}')
     require(pr['head']['sha']==state['head'],'retirement_pr_head_changed')
     if not pr.get('merged'):
@@ -231,16 +235,17 @@ def poll_retirement(site,observed,state,m):
             audited=json.loads(m.run(['node','scripts/dependency-patches.mjs','audit'],cwd=work,timeout=240).stdout)
             require(audited.get('highOrCritical')=={} and audited.get('regressionCases')==state['regressionCases'],
                 'new_advisory_blocks_review')
+        if before_merge:before_merge(work,state,m)
         m.browser('candidate',site,work)
         require(m.api(f'repos/{m.repo(site)}/commits/main')['sha']==base,'retirement_base_advanced')
         result=json.loads(m.run(['gh','api',f'repos/{m.repo(site)}/pulls/{state["prNumber"]}/merge','--method','PUT','-f','merge_method=squash','-f','sha='+state['head']]).stdout)
         require(result.get('merged') is True,'retirement_merge_failed');sha=result['sha']
     else:sha=pr['merge_commit_sha']
-    state.update(phase='verify',publishedSha=sha);m.save(m.BASE/site/'dependency-retirement.json',state)
+    state.update(phase='verify',publishedSha=sha);m.save(m.BASE/site/state_file,state)
     proof=m.verify_publication(site,{'publishedSha':sha,'workspace':str(work)})
-    state.update(phase='resolved',proof=proof,resolvedAt=m.now());m.save(m.BASE/site/'dependency-retirement.json',state)
-    m.notify('dependency-'+site)
-    return {'site':site,'action':'dependency_patch_reviewed' if review else 'dependency_patch_retired',
+    state.update(phase='resolved',proof=proof,resolvedAt=m.now());m.save(m.BASE/site/state_file,state)
+    m.notify(('picomatch-' if glob else 'dependency-')+site)
+    return {'site':site,'action':state['kind'] if glob else ('dependency_patch_reviewed' if review else 'dependency_patch_retired'),
         'sha':sha,'prUrl':state['prUrl']}
 
 def handle(site,observed,security,m,check_only=False):
@@ -250,6 +255,9 @@ def handle(site,observed,security,m,check_only=False):
             if check_only:return {'site':site,'action':'dependency_retirement_pending','prUrl':state.get('prUrl')}
             return poll_retirement(site,observed,state,m)
         if not security.get('workspace'):return None
+        if 'patchedPicomatchPaths' in security:
+            glob=handle_picomatch(site,observed,security,m,check_only)
+            if glob:return glob
         work=Path(security['workspace'])
         info=json.loads(m.run(['node','scripts/dependency-patches.mjs','upstream'],cwd=work,timeout=180).stdout)
         m.save(m.BASE/site/'dependency-upstream.json',{'checkedAt':m.now(),'patches':info})
@@ -354,3 +362,189 @@ def renew_dependency_budget(incident,advisories,sha,now):
     incident.setdefault('previousAttempts',[]).append({'attempts':incident.get('attempts',0),'reason':incident.get('reason'),'at':now})
     incident.update(attempts=0,phase='confirmed',base=sha,reason='new_compatible_dependency_fix',updatedAt=now)
     return True
+
+
+GLOB_ID='GHSA-fc5q-39xc-vjpf'
+GLOB_URL='https://github.com/advisories/'+GLOB_ID
+GLOB_STATE='picomatch-maintenance.json'
+GLOB_PATHS=('node_modules/anymatch/node_modules/picomatch','node_modules/picomatch')
+
+
+def stable_version(value):
+    return tuple(map(int,value.split('.'))) if isinstance(value,str) and re.fullmatch(r'(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)',value) else ()
+
+
+def glob_versions(advisory, installed):
+    """Use the published patched version for each compatible release line."""
+    require(advisory.get('ghsa_id')==GLOB_ID and advisory.get('type')=='reviewed','unverified_picomatch_advisory')
+    if advisory.get('withdrawn_at'):
+        return {}
+    fixed=sorted({parsed for entry in advisory.get('vulnerabilities',[])
+        if entry.get('package')=={'ecosystem':'npm','name':'picomatch'}
+        and (parsed:=stable_version(entry.get('first_patched_version')))})
+    versions={}
+    for path,value in installed.items():
+        current=stable_version(value)
+        require(path in GLOB_PATHS and bool(current),'unexpected_picomatch_install')
+        newer=next((v for v in fixed if v[0]==current[0] and v>current),None)
+        if newer:versions[path]='.'.join(map(str,newer))
+    return versions
+
+
+def glob_release(work, version, m):
+    result=m.run(['npm','view','picomatch@'+version,'--json','--registry=https://registry.npmjs.org'],
+        cwd=work,timeout=120,allow_failure=True)
+    if result.returncode:
+        return None
+    info=json.loads(result.stdout)
+    dist=info.get('dist',{});repo=info.get('repository',{})
+    require(info.get('name')=='picomatch' and info.get('version')==version
+        and repo.get('url')=='git+https://github.com/micromatch/picomatch.git' and not info.get('deprecated')
+        and dist.get('tarball')==f'https://registry.npmjs.org/picomatch/-/picomatch-{version}.tgz'
+        and re.fullmatch(r'sha512-[A-Za-z0-9+/]+=*',dist.get('integrity','')),
+        'unverified_picomatch_release')
+    require(not any(info.get(k) for k in ('dependencies','optionalDependencies','peerDependencies','bundledDependencies','bundleDependencies','bin'))
+        and not any(k in info.get('scripts',{}) for k in ('preinstall','install','postinstall','prepare')),
+        'picomatch_install_contract_changed')
+    return {'version':version,'resolved':dist['tarball'],'integrity':dist['integrity'],
+        **{k:info[k] for k in ('engines','license','funding') if k in info}}
+
+
+def reviewed_glob_patch(patch, security, remaining, now):
+    """Renew only the installed and freshly audited protection that is still required."""
+    audited=dt.datetime.fromisoformat(security['checkedAt'].replace('Z','+00:00'))
+    checked=dt.datetime.fromisoformat(now.replace('Z','+00:00'))
+    reports=[p for p in security['patches'] if p['package']=='picomatch']
+    require(security['highOrCritical']=={} and GLOB_URL in security['remediated'] and
+        sorted(security['patchedPicomatchPaths'])==sorted(remaining) and
+        security['globRegressionCases']==4+2*len(remaining) and
+        len(reports)==1 and reports[0]['status'] in ('attention','expired') and
+        reports[0]['expiresAt']==patch['expiresAt'] and
+        0<=(checked-audited).total_seconds()<3600 and re.fullmatch(r'[a-f0-9]{64}',security['digest']),
+        'picomatch_review_evidence_failed')
+    require(patch['active'] and remaining and now>=patch['warnAt'],'picomatch_review_not_due')
+    result=copy.deepcopy(patch)
+    history=result.setdefault('reviewHistory',[])
+    require(isinstance(history,list) and len(history)<150,'unexpected_picomatch_review_history')
+    history.append({'checkedAt':now,'previousExpiresAt':patch['expiresAt'],'auditDigest':security['digest'],
+        'patchedPaths':sorted(remaining),'regressionCases':security['globRegressionCases']})
+    start=checked.astimezone(dt.timezone.utc).replace(hour=0,minute=0,second=0,microsecond=0)
+    iso=lambda value:value.isoformat(timespec='seconds').replace('+00:00','Z')
+    return {**result,'introducedAt':iso(start),'warnAt':iso(start+dt.timedelta(days=14)),
+        'expiresAt':iso(start+dt.timedelta(days=21))}
+
+
+def glob_pull_request(state):
+    if state['kind']=='picomatch-review':
+        return ('Revalidate the temporary picomatch protection',
+            f'The installed protection passed a fresh audit, its regressions and site validation. '
+            f'Next expiry: {state["expiresAt"]}. The installed packages and catalog data are unchanged.')
+    versions=', '.join(sorted(set(state['installed'].values())))
+    return (f'Install official picomatch {versions}',
+        f'The reviewed advisory {GLOB_ID} names the installed versions as fixed. '
+        'Each version stays within its current major. Only the targeted lock entries and patch state change. '
+        'The original registry audit and all site checks remain required.')
+
+
+def confirm_glob_candidate(work, state, m):
+    if state['kind']=='picomatch-upgrade':
+        confirmed=glob_versions(m.api('advisories/'+GLOB_ID),state['previous'])
+        require(all(confirmed.get(path)==version for path,version in state['installed'].items()),
+            'picomatch_release_no_longer_confirmed')
+    report=json.loads(m.run(['node','scripts/dependency-patches.mjs','audit'],cwd=work,timeout=240).stdout)
+    require(report['highOrCritical']=={} and sorted(report['patchedPicomatchPaths'])==state['remaining'],
+        'picomatch_release_audit_failed')
+
+
+def handle_picomatch(site, observed, security, m, check_only):
+    folder=m.BASE/site
+    state_file=folder/GLOB_STATE
+    state=m.load(state_file,{})
+    alert='picomatch-'+site
+    try:
+        if state.get('phase') in ('publishing','pr_checks','verify'):
+            if check_only:return {'site':site,'action':'picomatch_pending','prUrl':state.get('prUrl')}
+            return poll_retirement(site,observed,state,m,GLOB_STATE,confirm_glob_candidate)
+        work=Path(security['workspace'])
+        manifest=m.load(work/'config/dependency-patches.json')
+        patch=manifest['picomatch']
+        if not patch['active']:return None
+        lock=m.load(work/'package-lock.json')
+        remaining=sorted(security['patchedPicomatchPaths'])
+        require(remaining and set(remaining)<=set(GLOB_PATHS),'unverified_picomatch_paths')
+        installed={path:lock['packages'][path]['version'] for path in remaining}
+        versions=glob_versions(m.api('advisories/'+GLOB_ID),installed)
+        releases={path:release for path,version in versions.items()
+            if (release:=glob_release(work,version,m)) is not None}
+        m.save(folder/'picomatch-upstream.json',{'checkedAt':m.now(),'installed':installed,
+            'candidates':{path:release['version'] for path,release in releases.items()},'expiresAt':patch['expiresAt']})
+        due=m.now()>=patch['warnAt']
+        budgets=state.get('budgets',{})
+        upgrade_key='upgrade:'+','.join(path+'@'+release['version'] for path,release in sorted(releases.items()))
+        upgrade=bool(releases) and budgets.get(upgrade_key,0)<2
+        review_key='review:'+patch['expiresAt']
+        if not upgrade and not due:return None
+        key=upgrade_key if upgrade else review_key
+        action='picomatch-upgrade' if upgrade else 'picomatch-review'
+        if check_only:return {'site':site,'action':action+'_available'}
+        if budgets.get(key,0)>=2:
+            m.notify(alert,{'reason':'picomatch_attempts_exhausted','attempts':budgets[key],'base':observed['sha'],
+                'diagnosis':f'Correctif picomatch à réexaminer pour {site.upper()} avant le {patch["expiresAt"]}.'})
+            return {'site':site,'action':'picomatch_needs_attention'}
+        require(not security['highOrCritical'],'new_advisory_blocks_picomatch_change')
+        budgets[key]=budgets.get(key,0)+1
+        state={'kind':action,'version':key,'attempts':budgets[key],'budgets':budgets,'base':observed['sha'],
+            'phase':'validating','startedAt':m.now()}
+        m.save(state_file,state)
+        candidate=m.new_workspace(site,observed['sha'])
+        state['workspace']=str(candidate);m.save(state_file,state)
+        allowed=['config/dependency-patches.json']
+        new_manifest=copy.deepcopy(manifest)
+        if due and set(releases if upgrade else ())!=set(remaining):
+            new_manifest['picomatch']=reviewed_glob_patch(patch,security,remaining,m.now())
+        if upgrade:
+            new_lock=copy.deepcopy(lock)
+            official=new_manifest['picomatch'].setdefault('officialVersions',{})
+            for path,release in releases.items():
+                new_lock['packages'][path].update(release)
+                official[path]=release['version']
+            new_manifest['picomatch']['active']=len(official)<len(GLOB_PATHS)
+            m.save(candidate/'package-lock.json',new_lock)
+            allowed.append('package-lock.json')
+        m.save(candidate/'config/dependency-patches.json',new_manifest)
+        state.update(allowed=allowed,expiresAt=new_manifest['picomatch']['expiresAt'],previous=installed,
+            installed={path:r['version'] for path,r in releases.items()} if upgrade else {},
+            remaining=sorted(set(remaining)-set(releases if upgrade else ())))
+        m.boundary(candidate,observed['sha'],allowed)
+        ok,_=m.validate(site,candidate,observed['sha'],folder/'picomatch-validation.log')
+        require(ok,'picomatch_site_validation_failed')
+        m.boundary(candidate,observed['sha'],allowed)
+        m.browser('candidate',site,candidate)
+        branch=f'codex/picomatch-{site}-{time.time_ns()}'
+        m.git(candidate,'checkout','-b',branch)
+        m.git(candidate,'add','--',*allowed)
+        m.git(candidate,'commit','-m',glob_pull_request(state)[0])
+        state.update(phase='publishing',head=m.git(candidate,'rev-parse','HEAD'),branch=branch)
+        m.save(state_file,state)
+        for attempt in range(8):
+            result=poll_retirement(site,observed,state,m,GLOB_STATE,confirm_glob_candidate)
+            if result['action']!='dependency_retirement_pending_ci' or attempt==7:return result
+            time.sleep(15)
+    except m.Deferred as error:
+        if str(error)!='repair_superseded_needs_recheck':raise
+        state.update(phase='retry_next_check',reason=str(error))
+        m.save(state_file,state)
+        return {'site':site,'action':'picomatch_superseded'}
+    except Exception as error:
+        if check_only:raise
+        if state.get('phase')=='pr_checks' and state.get('prNumber'):
+            m.run(['gh','pr','close',str(state['prNumber']),'--repo',m.repo(site)],
+                cwd=Path(state['workspace']),allow_failure=True)
+        phase='retry_next_check'
+        if state.get('phase') in ('publishing','pr_checks','verify') and not isinstance(error,ValueError):
+            phase=state['phase']
+        state.update(phase=phase,reason=str(error)[:180],failedAt=m.now())
+        m.save(state_file,state)
+        if state.get('attempts',0)>=2:
+            m.notify(alert,{**state,'diagnosis':f'Validation picomatch à examiner pour {site.upper()}.'})
+        return {'site':site,'action':'picomatch_pending_or_retry','reason':state['reason']}

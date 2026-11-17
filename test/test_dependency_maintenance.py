@@ -282,4 +282,72 @@ class Policy(unittest.TestCase):
      result=d.poll_retirement('de',{'sha':'base'},state,m)
      self.assertEqual(result['action'],'dependency_retirement_pending_ci' if mode=='pending' else 'dependency_patch_retired')
      self.assertEqual(calls.count('merge'),1 if mode=='success' else 0)
+class PicomatchLifecycle(unittest.TestCase):
+ def advisory(self,*versions):
+  return {'ghsa_id':d.GLOB_ID,'type':'reviewed','vulnerabilities':[
+    {'package':{'ecosystem':'npm','name':'picomatch'},'first_patched_version':v}
+    for v in versions]}
+
+ def test_official_versions_are_selected_independently_per_major(self):
+  v2,v4=d.GLOB_PATHS
+  installed={v2:'2.3.2',v4:'4.0.7'}
+  self.assertEqual(d.glob_versions(self.advisory(None),installed),{})
+  self.assertEqual(d.glob_versions(self.advisory('4.0.8','5.0.0','2.3.3-beta.1'),installed),{v4:'4.0.8'})
+  self.assertEqual(d.glob_versions(self.advisory('2.3.3','4.0.8'),installed),{v2:'2.3.3',v4:'4.0.8'})
+  self.assertEqual(d.glob_versions({**self.advisory('4.0.8'),'withdrawn_at':'2026-11-24'},installed),{})
+  with self.assertRaisesRegex(ValueError,'unverified_picomatch_advisory'):
+   d.glob_versions({**self.advisory('4.0.8'),'type':'unreviewed'},installed)
+
+ def fixture(self):
+  patch={'package':'picomatch','active':True,'introducedAt':'2026-11-17T00:00:00Z',
+    'warnAt':'2026-11-24T00:00:00Z','expiresAt':'2026-12-08T00:00:00Z'}
+  report={'checkedAt':'2026-11-24T10:00:00Z','digest':'a'*64,'highOrCritical':{},
+    'patchedPicomatchPaths':list(d.GLOB_PATHS),'globRegressionCases':8,'remediated':[d.GLOB_URL],
+    'patches':[{'package':'picomatch','status':'attention','expiresAt':patch['expiresAt']}]}
+  return patch,report
+
+ def test_review_extends_only_verified_protection_before_expiry(self):
+  patch,report=self.fixture()
+  now='2026-11-24T10:15:00Z'
+  updated=d.reviewed_glob_patch(patch,report,list(d.GLOB_PATHS),now)
+  self.assertEqual(updated['expiresAt'],'2026-12-15T00:00:00Z')
+  self.assertEqual(updated['reviewHistory'][0]['previousExpiresAt'],patch['expiresAt'])
+  self.assertEqual(patch['expiresAt'],'2026-12-08T00:00:00Z')
+  for bad in ({'highOrCritical':{'another':{}}},{'globRegressionCases':4},
+    {'checkedAt':'2026-11-23T00:00:00Z'},{'patchedPicomatchPaths':[]}):
+   with self.assertRaisesRegex(ValueError,'picomatch_review_evidence_failed'):
+    d.reviewed_glob_patch(patch,{**report,**bad},list(d.GLOB_PATHS),now)
+
+ def test_candidate_changes_only_the_compatible_copy_and_patch_state(self):
+  v2,v4=d.GLOB_PATHS
+  with tempfile.TemporaryDirectory() as root:
+   base=Path(root);work=base/'fr/audit';candidate=base/'fr/attempt-test'
+   patch,report=self.fixture()
+   lock={'packages':{'':{'name':'test'},v2:{'version':'2.3.2'},v4:{'version':'4.0.7'}}}
+   manifest={'schemaVersion':1,'patches':[],'picomatch':patch}
+   def load(path,default=None):return json.loads(path.read_text()) if path.exists() else default
+   def save(path,value):path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(value))
+   save(work/'config/dependency-patches.json',manifest)
+   save(work/'package-lock.json',lock)
+   candidate.mkdir()
+   report['workspace']=str(work)
+   m=SimpleNamespace(BASE=base,load=load,save=save,now=lambda:'2026-11-24T10:15:00Z',
+     api=lambda path:self.advisory('4.0.8'),new_workspace=lambda *a:candidate,
+     boundary=lambda *a:None,browser=lambda *a:None,validate=lambda *a:(True,''),
+     git=lambda *a:'head',notify=lambda *a:None,Deferred=type('Deferred',(Exception,),{}))
+   release={'version':'4.0.8','integrity':'sha512-aaa','resolved':'official'}
+   with mock_patch.object(d,'glob_release',return_value=release), mock_patch.object(d,'poll_retirement',return_value={'action':'published'}) as publish:
+    self.assertEqual(d.handle_picomatch('fr',{'sha':'base'},report,m,True)['action'],'picomatch-upgrade_available')
+    self.assertFalse((candidate/'package-lock.json').exists())
+    self.assertEqual(d.handle_picomatch('fr',{'sha':'base'},report,m,False)['action'],'published')
+   published=load(candidate/'package-lock.json')
+   self.assertEqual(published['packages'][v2],lock['packages'][v2])
+   self.assertEqual(published['packages'][v4],release)
+   self.assertEqual(published['packages'][''],lock['packages'][''])
+   updated=load(candidate/'config/dependency-patches.json')['picomatch']
+   self.assertEqual(updated['officialVersions'],{v4:'4.0.8'})
+   self.assertTrue(updated['active'])
+   self.assertEqual(updated['expiresAt'],'2026-12-15T00:00:00Z')
+   self.assertEqual(publish.call_args.args[-2:],(d.GLOB_STATE,d.confirm_glob_candidate))
+
 if __name__=='__main__':unittest.main()
