@@ -158,7 +158,8 @@ def audit_snapshot(site,sha,m):
     root=m.fresh_root(site,sha);folder=m.BASE/site
     manifest=m.run(['git','show',sha+':config/dependency-patches.json'],cwd=root,allow_failure=True)
     if manifest.returncode:return None
-    paths=m.git(root,'ls-tree','-r','--name-only',sha,'--',*FILES,'scripts/dependency-patches.mjs','scripts/test-dependency-patches.mjs','vendor/http-cache-semantics').splitlines()
+    paths=m.git(root,'ls-tree','-r','--name-only',sha,'--',*FILES,'scripts/dependency-patches.mjs',
+        'scripts/test-dependency-patches.mjs','scripts/picomatch-build-protection.mjs','vendor/http-cache-semantics').splitlines()
     digest=hashlib.sha256()
     contents={}
     for path in paths:
@@ -170,14 +171,16 @@ def audit_snapshot(site,sha,m):
     if cached.get('digest')==signature and time.time()-cached.get('epoch',0)<21600:
         # Expiry remains checked even when the online advisory cache is reused.
         manifest_now=json.loads(manifest.stdout)
-        if all(not p['active'] or p['warnAt'] > m.now() for p in manifest_now['patches']):return cached
+        patches=manifest_now['patches']+([manifest_now['picomatch']] if 'picomatch' in manifest_now else [])
+        if all(not p['active'] or p['warnAt'] > m.now() for p in patches):return cached
     work.mkdir(parents=True,exist_ok=True)
     for path,content in contents.items():
         target=work/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(content)
     m.run(['npm','ci','--ignore-scripts','--no-audit'],cwd=work,timeout=600)
     p=m.run(['node','scripts/dependency-patches.mjs','observe'],cwd=work,timeout=240,allow_failure=True)
+    require(p.returncode in (0,1) and bool(p.stdout.strip()),'dependency_audit_unavailable')
     report=json.loads(p.stdout)
-    require(p.returncode in (0,1) and isinstance(report.get('highOrCritical'),dict),'dependency_audit_unavailable')
+    require(isinstance(report.get('highOrCritical'),dict),'dependency_audit_unavailable')
     report.update(digest=signature,epoch=time.time(),workspace=str(work))
     m.save(folder/'dependency-audit.json',report)
     return report
