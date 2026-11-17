@@ -474,14 +474,24 @@ def handle_picomatch(site, observed, security, m, check_only):
         require(remaining and set(remaining)<=set(GLOB_PATHS),'unverified_picomatch_paths')
         installed={path:lock['packages'][path]['version'] for path in remaining}
         versions=glob_versions(m.api('advisories/'+GLOB_ID),installed)
-        releases={path:release for path,version in versions.items()
-            if (release:=glob_release(work,version,m)) is not None}
+        published={};withheld={}
+        for path,version in versions.items():
+            try:
+                if release:=glob_release(work,version,m):published[path]=release
+            except ValueError as error:
+                withheld[path]=str(error)[:180]
         m.save(folder/'picomatch-upstream.json',{'checkedAt':m.now(),'installed':installed,
-            'candidates':{path:release['version'] for path,release in releases.items()},'expiresAt':patch['expiresAt']})
+            'candidates':{path:release['version'] for path,release in published.items()},
+            'withheld':withheld,'expiresAt':patch['expiresAt']})
         due=m.now()>=patch['warnAt']
         budgets=state.get('budgets',{})
-        upgrade_key='upgrade:'+','.join(path+'@'+release['version'] for path,release in sorted(releases.items()))
-        upgrade=bool(releases) and budgets.get(upgrade_key,0)<2
+        # Review one release line at a time. A failed test for one major cannot
+        # exhaust the other major's opportunity to install its official fix.
+        entries=((path,release,'upgrade:'+path+'@'+release['version'])
+            for path,release in sorted(published.items(),reverse=True))
+        path,release,upgrade_key=next((entry for entry in entries if budgets.get(entry[2],0)<2),(None,None,None))
+        upgrade=release is not None
+        releases={path:release} if upgrade else {}
         review_key='review:'+patch['expiresAt']
         if not upgrade and not due:return None
         key=upgrade_key if upgrade else review_key

@@ -332,11 +332,11 @@ class PicomatchLifecycle(unittest.TestCase):
    candidate.mkdir()
    report['workspace']=str(work)
    m=SimpleNamespace(BASE=base,load=load,save=save,now=lambda:'2026-11-24T10:15:00Z',
-     api=lambda path:self.advisory('4.0.8'),new_workspace=lambda *a:candidate,
+     api=lambda path:self.advisory('2.3.3','4.0.8'),new_workspace=lambda *a:candidate,
      boundary=lambda *a:None,browser=lambda *a:None,validate=lambda *a:(True,''),
      git=lambda *a:'head',notify=lambda *a:None,Deferred=type('Deferred',(Exception,),{}))
    release={'version':'4.0.8','integrity':'sha512-aaa','resolved':'official'}
-   with mock_patch.object(d,'glob_release',return_value=release), mock_patch.object(d,'poll_retirement',return_value={'action':'published'}) as publish:
+   with mock_patch.object(d,'glob_release',side_effect=lambda _w,v,_m:{**release,'version':v}), mock_patch.object(d,'poll_retirement',return_value={'action':'published'}) as publish:
     self.assertEqual(d.handle_picomatch('fr',{'sha':'base'},report,m,True)['action'],'picomatch-upgrade_available')
     self.assertFalse((candidate/'package-lock.json').exists())
     self.assertEqual(d.handle_picomatch('fr',{'sha':'base'},report,m,False)['action'],'published')
