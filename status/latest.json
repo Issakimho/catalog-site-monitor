@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-11-23T03:09:21.828Z",
+  "checkedAt": "2026-11-24T03:03:40.763Z",
   "sites": [
     {
       "site": "fr",
@@ -23,8 +23,8 @@
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         },
         {
@@ -44,8 +44,8 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 1,
-          "ctas": 1,
+          "cards": 2,
+          "ctas": 2,
           "code": "ok"
         }
       ]
@@ -150,8 +150,10 @@
     },
     {
       "site": "es",
-      "status": "healthy",
-      "codes": [],
+      "status": "warning",
+      "codes": [
+        "quiz_risk_12h"
+      ],
       "probes": [
         {
           "profile": "drawing",
@@ -163,15 +165,15 @@
         {
           "profile": "bim",
           "forecastHours": 0,
-          "cards": 3,
-          "ctas": 3,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
           "profile": "rendering",
           "forecastHours": 0,
-          "cards": 2,
-          "ctas": 2,
+          "cards": 1,
+          "ctas": 1,
           "code": "ok"
         },
         {
@@ -191,9 +193,9 @@
         {
           "profile": "rendering",
           "forecastHours": 12,
-          "cards": 2,
-          "ctas": 2,
-          "code": "ok"
+          "cards": 0,
+          "ctas": 0,
+          "code": "no_recommendations"
         }
       ]
     },
